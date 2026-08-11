@@ -256,6 +256,13 @@ def _wynik(klucz, pewnosc, powod, zrodlo) -> dict:
 #  NARZĘDZIA POMOCNICZE
 # ══════════════════════════════════════════════════════════════
 
+# Jedna poprawnie sformatowana kwota pieniężna: grupy tysięcy (spacja/kropka/
+# przecinek) + dokładnie 2 cyfry grosza. Używane zamiast łapczywego
+# "[\d\s.,]+" przy wyszukiwaniu sum na fakturze — to ostatnie potrafiło
+# połknąć przypadkowe sąsiednie liczby (np. nagłówek kolumny w tabeli tuż
+# nad pierwszym wierszem pozycji) jako jedną wielką, bez sensu kwotę.
+_MONEY = r"(?:\d{1,3}(?:[ .,]\d{3})*|\d+)[.,]\d{2}"
+
 def clean_amount(text) -> float | None:
     """Obsługuje PL (1.234,56) i EN (1,234.56) i spacje jako separator tysięcy."""
     if text is None: return None
@@ -308,9 +315,9 @@ _COL_RE = {
     'ilosc':           r'ilo[śs][ćc]|qty|quantity|count\b',
     'jm':              r'^(?:jm|j\.m\.?|jedn|miara|unit|uom)$',
     'cena_netto':      r'cena\s*netto|c\.?\s*netto|unit\s*price|unit\s*cost|price\s*each|sales\s*price|cena\s*jedn',
-    'wartosc_netto':   r'wart[oó][śs][ćc]\s*netto|wart\.?\s*netto|net\s*(?:amount|value|total)|^amount',
-    'stawka_vat':      r'^vat$|stawka\s*vat|%\s*vat|vat\s*%|tax\s*rate',
-    'kwota_vat':       r'kwota\s*vat|podatek|tax\s*amount|vat\s*amount',
+    'wartosc_netto':   r'wart[oó][śs][ćc]\s*(?:sprzeda[żz]y\s*)?netto|wart\.?\s*netto|net\s*(?:amount|value|total)|^amount',
+    'stawka_vat':      r'^vat$|stawka\s*vat|stawka\s*podatku|%\s*vat|vat\s*%|tax\s*rate',
+    'kwota_vat':       r'kwota\s*vat|kwota\s*podat|podatek|tax\s*amount|vat\s*amount',
     'wartosc_brutto':  r'brutto|wart[oó][śs][ćc]\s*brutto|gross|total(?:\s*amount)?|amount\s*(?:inc|incl)',
 }
 
@@ -322,12 +329,16 @@ def _map_columns(header_row: list) -> dict | None:
         c = str(cell).lower().strip().replace('\n', ' ')
         for field, pattern in _COL_RE.items():
             if re.search(pattern, c):
+                # Jedna kolumna = jedno pole. Bez tego np. "Stawka podatku"
+                # (stawka VAT) potrafiła jednocześnie trafić do kwota_vat
+                # (przez rdzeń "podat"), nadpisując właściwą kolumnę kwotową.
                 if field in ('lp', 'indeks', 'pkwiu', 'ilosc', 'jm',
                              'cena_netto', 'wartosc_netto', 'stawka_vat',
                              'kwota_vat', 'wartosc_brutto'):
                     mapping.setdefault(field, i)
                 else:  # opis – może nadpisać słabsze dopasowanie
                     mapping.setdefault('opis', i)
+                break
     if 'opis' not in mapping and 'indeks' in mapping:
         mapping['opis'] = mapping['indeks']
     if 'opis' not in mapping:
@@ -356,6 +367,21 @@ def _row_to_item(row: list, col_map: dict, lp_counter: int) -> dict | None:
     try:   lp = int(re.sub(r'\D','', g('lp') or '') or lp_counter)
     except: lp = lp_counter
 
+    wartosc_netto  = clean_amount(g('wartosc_netto'))
+    stawka_vat     = g('stawka_vat')
+    kwota_vat      = clean_amount(g('kwota_vat'))
+    wartosc_brutto = clean_amount(g('wartosc_brutto'))
+
+    # Niektóre formaty (np. polskie e-Faktury/KSeF) podają w tabeli pozycji
+    # tylko stawkę VAT i wartość netto, bez osobnych kolumn na kwotę VAT
+    # i brutto — doliczamy je, żeby raport/kategoryzacja miały pełne dane.
+    if wartosc_netto is not None and kwota_vat is None and wartosc_brutto is None and stawka_vat:
+        rate_m = re.search(r'(\d+(?:[.,]\d+)?)\s*%', stawka_vat)
+        if rate_m:
+            rate = float(rate_m.group(1).replace(',', '.')) / 100
+            kwota_vat = round(wartosc_netto * rate, 2)
+            wartosc_brutto = round(wartosc_netto + kwota_vat, 2)
+
     return {
         "lp": lp, "opis": _clean_opis(opis),
         "indeks": g('indeks') or '',
@@ -363,10 +389,10 @@ def _row_to_item(row: list, col_map: dict, lp_counter: int) -> dict | None:
         "ilosc":  clean_amount(g('ilosc')),
         "jm":     g('jm') or 'szt',
         "cena_netto":    clean_amount(g('cena_netto')),
-        "wartosc_netto": clean_amount(g('wartosc_netto')),
-        "stawka_vat":    g('stawka_vat'),
-        "kwota_vat":     clean_amount(g('kwota_vat')),
-        "wartosc_brutto":clean_amount(g('wartosc_brutto')),
+        "wartosc_netto": wartosc_netto,
+        "stawka_vat":    stawka_vat,
+        "kwota_vat":     kwota_vat,
+        "wartosc_brutto":wartosc_brutto,
     }
 
 def parse_all_tables(tables: list, text: str) -> list[dict]:
@@ -653,19 +679,96 @@ def parse_text_universal(text: str) -> list[dict]:
 
 def detect_vendor(text: str) -> str:
     if re.search(r'TIM S\.A\.',              text):               return "tim"
-    if re.search(r'Sonepar|Numer KSEF',     text):               return "sonepar"
+    if re.search(r'Sonepar',                text):               return "sonepar"
     if re.search(r'Siemens Sp\. z o\.o\.',  text):               return "siemens"
     if re.search(r'MERCOR|mercor\.com\.pl', text, re.I):         return "mercor"
     if re.search(r'EUROTERM|euroterm24',    text, re.I):         return "euroterm"
     if re.search(r'Fire Eater|fire-eater\.com', text, re.I):    return "fire_eater"
     if re.search(r'Tyco Building Services', text, re.I):        return "tyco"
     if re.search(r'[Rr]apidrop',           text):               return "rapidrop"
+    # Krajowy System e-Faktur (KSeF) — obowiązkowy krajowy format e-faktur
+    # w Polsce, używany przez dowolnego wystawcę (nie tylko powyższych).
+    # Ma stały układ nagłówka, więc warto go rozpoznać osobno zamiast
+    # wpadać w generyczny fallback albo (gorzej) mylić z jednym z powyższych
+    # tylko dlatego, że tamta faktura też przechodzi przez KSeF.
+    if re.search(r'Krajowy System e-Faktur|Numer KSEF', text):    return "ksef_generic"
     return "generic"
 
 
 # ══════════════════════════════════════════════════════════════
 #  EKSTRAKCJA NAGŁÓWKA FAKTURY
 # ══════════════════════════════════════════════════════════════
+
+def _column_texts(words: list, page_width: float) -> tuple[str, str]:
+    """
+    Dzieli słowa strony (pdfplumber `page.extract_words()`) na tekst lewej
+    i prawej kolumny wg pozycji x0. Potrzebne dla layoutów dwukolumnowych
+    (np. blok "Sprzedawca / Nabywca" na fakturach KSeF), gdzie zwykłe
+    `extract_text()` miesza pola z obu kolumn w jednej linii.
+    """
+    if not words:
+        return "", ""
+    mid = page_width / 2
+
+    def to_text(ws):
+        lines: dict[int, list] = {}
+        for w in ws:
+            lines.setdefault(round(w["top"]), []).append(w)
+        out = []
+        for top in sorted(lines):
+            row = sorted(lines[top], key=lambda w: w["x0"])
+            out.append(" ".join(w["text"] for w in row))
+        return "\n".join(out)
+
+    left  = [w for w in words if w["x0"] < mid]
+    right = [w for w in words if w["x0"] >= mid]
+    return to_text(left), to_text(right)
+
+
+def _extract_party_name(col_text: str) -> str | None:
+    """Wyciąga wartość pola 'Nazwa:' z tekstu jednej kolumny, doklejając
+    kolejne linie zawijania nazwy aż do napotkania kolejnej etykiety."""
+    lines = col_text.split("\n")
+    start = next((i for i, l in enumerate(lines) if l.strip().startswith("Nazwa:")), None)
+    if start is None:
+        return None
+    parts = [lines[start].split("Nazwa:", 1)[1].strip()]
+    for l in lines[start + 1:]:
+        ls = l.strip()
+        if not ls or re.match(
+            r'^(Adres|NIP|Dane|Identyfikator|Numer|Prefiks|E-mail|Tel\.)', ls, re.I
+        ):
+            break
+        parts.append(ls)
+    name = " ".join(p for p in parts if p).strip()
+    return name or None
+
+
+def _ksef_vat_summary(tables: list) -> tuple[float | None, float | None, float | None]:
+    """Sumuje wiersze tabeli 'Podsumowanie stawek podatku' (Kwota netto /
+    Kwota podatku / Kwota brutto) — jedna faktura może mieć kilka stawek VAT."""
+    for table in tables:
+        if not table or len(table) < 2:
+            continue
+        header = [str(c or "").lower().strip().replace("\n", " ") for c in table[0]]
+        if "kwota netto" not in header or "kwota brutto" not in header:
+            continue
+        i_net = header.index("kwota netto")
+        i_brutto = header.index("kwota brutto")
+        i_vat = next((i for i, h in enumerate(header) if "kwota podat" in h), None)
+        net = vat = brutto = 0.0
+        for row in table[1:]:
+            if not row:
+                continue
+            v = clean_amount(row[i_net]) if i_net < len(row) else None
+            b = clean_amount(row[i_brutto]) if i_brutto < len(row) else None
+            t = clean_amount(row[i_vat]) if i_vat is not None and i_vat < len(row) else None
+            if v: net += v
+            if b: brutto += b
+            if t: vat += t
+        return net or None, vat or None, brutto or None
+    return None, None, None
+
 
 def _from_header_table(tables: list) -> dict:
     """
@@ -696,12 +799,21 @@ def _from_header_table(tables: list) -> dict:
 def _extract_vendor_name(text: str) -> str:
     m = re.search(r'(?:Sprzedawca|Wystawca|Sprzedaj[aą]cy)\s*[:\n]\s*(.+?)(?:\n|NIP|ul\.|Al\.)', text, re.I)
     if m and len(m.group(1).strip()) > 3: return m.group(1).strip()
-    m = re.search(r'([^\n]{3,80}(?:Sp\.\s*z\s*o\.o\.?|S\.A\.|A/S|sp\.j\.|LLC|GmbH)[^\n]*)', text, re.I)
+    # Nazwa sprzedawcy zwykle stoi w nagłówku/stopce dokumentu (pierwsze
+    # ~600 znaków) — szukanie w całym tekście łapało czasem dane nabywcy
+    # ("Invoice To:" / "Deliver To:" pojawiają się dalej, ale też pasują
+    # do wzorca spółki).
+    suffix = r'Sp\.\s*z\s*o\.o\.?|S\.A\.|A/S|sp\.j\.|LLC|GmbH|Limited|Ltd\.?|B\.V\.?|Inc\.?'
+    m = re.search(rf'([^\n]{{3,80}}(?:{suffix})[^\n]*)', text[:600], re.I)
+    if m: return m.group(1).strip()
+    m = re.search(rf'([^\n]{{3,80}}(?:{suffix})[^\n]*)', text, re.I)
     if m: return m.group(1).strip()
     return "Nieznany"
 
 
-def extract_header(text: str, tables: list, vendor: str) -> dict:
+def extract_header(text: str, tables: list, vendor: str,
+                    page0_words: list | None = None,
+                    page0_width: float | None = None) -> dict:
     # 1. Próbuj z tabeli nagłówkowej (Rapidrop, ogólne EN)
     h = _from_header_table(tables)
 
@@ -711,13 +823,18 @@ def extract_header(text: str, tables: list, vendor: str) -> dict:
 
     if not h.get("numer_faktury"):
         h["numer_faktury"] = {
-            "tim":        fv(r"Faktura VAT\s+(FV\S+)"),
-            "sonepar":    fv(r"Numer Faktury:\s*(FA_\S+)"),
-            "siemens":    fv(r"Faktura numer[^\n]+\n\S+\s+(\d{7,11})"),
-            "mercor":     fv(r"Nr\s+(FVSHW[\S]+)"),
-            "euroterm":   fv(r"nr\s+(\(S\)FS-\d+/\d+/[A-Z]+)"),
-            "fire_eater": fv(r"Invoice\s*No\.?\s+(\d{5,10})"),
-            "tyco":       fv(r"INVOICE\s+(\d{7,12})"),
+            "tim":         fv(r"Faktura VAT\s+(FV\S+)"),
+            "sonepar":     fv(r"Numer Faktury:\s*(FA_\S+)"),
+            "siemens":     fv(r"Faktura numer[^\n]+\n\S+\s+(\d{7,11})"),
+            "mercor":      fv(r"Nr\s+(FVSHW[\S]+)"),
+            "euroterm":    fv(r"nr\s+(\(S\)FS-\d+/\d+/[A-Z]+)"),
+            "fire_eater":  fv(r"Invoice\s*No\.?\s+(\d{5,10})"),
+            "tyco":        fv(r"INVOICE\s+(\d{7,12})"),
+            # Numer faktury stoi na osobnej linii pod etykietą; linia
+            # bezpośrednio pod nim to typ dokumentu ("Faktura podstawowa" /
+            # "Faktura korygująca"), NIE numer — trzeba złapać tylko
+            # pierwszą linię po etykiecie.
+            "ksef_generic": fv(r"Numer Faktury:\s*([^\n]+)"),
         }.get(vendor) or fv(
             r"Invoice\s+No\.?[:\s]+(\d{4,10})",
             r"(?:Faktura\s*(?:VAT|nr|numer)?|Nr\s*faktury)[:\s]*([\w/\-]+)",
@@ -726,6 +843,8 @@ def extract_header(text: str, tables: list, vendor: str) -> dict:
     if not h.get("data_faktury"):
         h["data_faktury"] = fv(
             r"Data\s+(?:faktury|wystawienia)[:\s]*(\d{2}[.\-]\d{2}[.\-]\d{4}|\d{4}-\d{2}-\d{2})",
+            # KSeF: "Data wystawienia, z zastrzeżeniem art. 106na ust. 1 ustawy: 15.04.2026"
+            r"Data\s+wystawienia[^:\n]*:\s*(\d{2}\.\d{2}\.\d{4})",
             r"Invoice\s+Date[:\s]+(\d{2}[- ][A-Za-z]{3}[- ]\d{4}|\d{2}\.\d{2}\.\d{4})",
         )
     if not h.get("termin_platnosci"):
@@ -741,12 +860,20 @@ def extract_header(text: str, tables: list, vendor: str) -> dict:
             r"Zamówienia?[:\s]+([\w/\-]+)",
         )
 
+    if not h.get("sprzedawca") and vendor == "ksef_generic" and page0_words:
+        # Layout dwukolumnowy "Sprzedawca | Nabywca" — zwykły extract_text()
+        # miesza pola z obu kolumn w jednej linii, więc trzeba rozdzielić
+        # słowa wg pozycji x0 i czytać tylko lewą kolumnę (sprzedawca).
+        left_col, _right_col = _column_texts(page0_words, page0_width or 595)
+        h["sprzedawca"] = _extract_party_name(left_col)
+
     if not h.get("sprzedawca"):
         h["sprzedawca"] = {
             "tim": "TIM S.A.", "sonepar": "Sonepar Polska Sp. z o.o.",
             "siemens": "Siemens Sp. z o.o.", "mercor": "MERCOR Light&Vent sp. z o.o.",
             "euroterm": "EUROTERM TGS sp. z o.o.", "fire_eater": "Fire Eater A/S",
             "tyco": "Tyco Building Services Products GmbH",
+            "rapidrop": "Rapidrop Europe Limited",
         }.get(vendor) or _extract_vendor_name(text)
 
     # Kwoty razem
@@ -754,13 +881,31 @@ def extract_header(text: str, tables: list, vendor: str) -> dict:
         h["razem_brutto"] = clean_amount(fv(
             r"(?:Total\s+[€£$]?\s*Incl\.?\s*VAT|Do\s+zapłaty(?:\s+brutto)?|"
             r"Razem\s+do\s+zapłaty|INVOICE AMOUNT\s+EUR|Kwota należności ogółem|"
-            r"Warto[śs][cć]\s+sprzeda[żz]y\s+brutto)[^\d\n]*([\d\s.,]+)",
-            r"Total\s+(?:EUR|USD|GBP|PLN|CHF)\s+([\d\s.,]+)",
+            rf"Warto[śs][cć]\s+sprzeda[żz]y\s+brutto)[^\d\n]*({_MONEY})",
+            rf"Total\s+(?:EUR|USD|GBP|PLN|CHF)\s+({_MONEY})",
         ))
+    if not h.get("razem_netto") and vendor == "ksef_generic":
+        # KSeF: nie ma jawnej etykiety "Razem netto" obok kwoty w tekście —
+        # samo słowo "Wartość sprzedaży netto" to tu nagłówek KOLUMNY w
+        # tabeli pozycji, więc łapanie "pierwszej liczby po etykiecie"
+        # (jak niżej) chwyta przypadkowe dane z pierwszego wiersza tabeli.
+        # Bezpieczniej zsumować tabelę "Podsumowanie stawek podatku"
+        # (może mieć kilka wierszy, po jednym na stawkę VAT).
+        net, _vat, brutto = _ksef_vat_summary(tables)
+        if net is not None:
+            h["razem_netto"] = net
+        if not h.get("razem_brutto") and brutto is not None:
+            h["razem_brutto"] = brutto
     if not h.get("razem_netto"):
+        # "Subtotal" jest sprawdzany jako ostatni (osobny, niższy priorytet
+        # wzorzec) — na fakturach z rabatem (np. Rapidrop 232326) Subtotal
+        # to kwota PRZED rabatem, a "Total Excl. VAT" to właściwa netto.
+        # find_value zwraca dopasowanie pierwszego wzorca, który cokolwiek
+        # złapie, więc kolejność argumentów tu ma znaczenie.
         h["razem_netto"] = clean_amount(fv(
-            r"(?:Total\s+[€£$]?\s*Excl\.?\s*VAT|Net\s+amount|"
-            r"Razem\s+netto|Warto[śs][cć]\s+sprzeda[żz]y\s+netto)[:\s]*([\d\s.,]+)",
+            rf"(?:Total\s+[€£$]?\s*Excl\.?\s*VAT|Net\s+amount|"
+            rf"Razem\s+netto|Warto[śs][cć]\s+sprzeda[żz]y\s+netto)[:\s]*({_MONEY})",
+            rf"Subtotal[:\s]*({_MONEY})",
         ))
 
     # Waluta – jednoznaczne symbole/deklaracje mają pierwszeństwo przed
@@ -787,16 +932,23 @@ def extract_header(text: str, tables: list, vendor: str) -> dict:
 def parse_invoice(pdf_path: str) -> tuple[dict, list[dict]]:
     full_text = ""
     all_tables: list = []
+    page0_words: list = []
+    page0_width: float | None = None
     with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
+        for i, page in enumerate(pdf.pages):
             full_text += (page.extract_text() or "") + "\n"
             try:
                 tbls = page.extract_tables()
                 if tbls: all_tables.extend(tbls)
             except Exception: pass
+            if i == 0:
+                try:
+                    page0_words = page.extract_words()
+                    page0_width = page.width
+                except Exception: pass
 
     vendor = detect_vendor(full_text)
-    header = extract_header(full_text, all_tables, vendor)
+    header = extract_header(full_text, all_tables, vendor, page0_words, page0_width)
     header["typ"]  = vendor
     header["plik"] = Path(pdf_path).name
 
