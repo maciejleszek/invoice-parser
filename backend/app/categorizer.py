@@ -80,6 +80,7 @@ KEYWORD_RULES: dict[str, list[str]] = {
         "fire alarm", "smoke detector", "solenoid", "nozzle calibrated",
         "alarm valve", "waterflow indicator", "retard chamber", "supervisory switch",
         "fire suppression", "sprinkler", "dry pipe", "dpv", "wet alarm",
+        "orifice", "nozzle", "accelerator", "deluge",
     ],
     "elektryka": [
         "wyłącznik nadprądowy", "wyłącznik różnicowy", "bezpiecznik",
@@ -115,16 +116,16 @@ KEYWORD_RULES: dict[str, list[str]] = {
         # EN fire suppression valves / fittings
         "grooved butterfly valve", "swing check valve", "gate valve", "butterfly valve",
         "check valve", "alarm gong", "water motor", "manifold",
-        "hose", "grooved", "os&y",
+        "hose", "grooved", "os&y", "obejm", "kotw",
     ],
     "gazownictwo": [
         "rura gazowa", "zawór gazowy", "gazomierz", "regulator gazu",
         "armatura gazowa", "instalacja gazowa",
     ],
     "transport": [
-        "spedycja", "transport", "dostawa", "przewóz", "kurier",
+        "spedycja", "transport", "dostaw", "przewóz", "kurier",
         "przesyłka", "logistyka",
-        "shipping", "freight", "handling charge",
+        "shipping", "freight", "handling charge", "carriage",
     ],
     "teletechnika": [
         "router", "kabel sieciowy", "patchcord", "patch panel",
@@ -133,9 +134,10 @@ KEYWORD_RULES: dict[str, list[str]] = {
     ],
     "mechanika": [
         "śruba", "nakrętka", "podkładka", "kołek", "wiertło",
-        "wspornik", "uchwyt", "konsola montażowa", "profil stalowy",
+        "wspornik", "uchwyt", "konsol", "profil stalowy",
         "cyl bracket", "cyl rail", "rail end cover",
         "switch kit", "limit switch", "mounting bracket",
+        "gwintowan", "kątownik", "klamr", "szyna montaż",
     ],
     "narzedzia": [
         "taśma", "uszczelniacz", "silikon", "klej", "folia",
@@ -147,6 +149,20 @@ KEYWORD_RULES: dict[str, list[str]] = {
         "drzwi", "okno", "podłoga", "płytka",
         "izolacja", "wełna mineralna", "styropian",
     ],
+}
+
+# Niektóre PDF-y (zwłaszcza starsze/ERP-owe) zapisują polskie znaki bez
+# ogonków/kresek na części słów (np. "PODKLADKA" zamiast "PODKŁADKA" w tej
+# samej fakturze, gdzie inne słowa mają poprawne znaki) — prawdopodobnie
+# błąd czcionki/eksportu po stronie wystawcy, nie da się tego przewidzieć
+# wzorcem. Dopasowanie słów kluczowych ignoruje więc ogonki po obu stronach.
+_PL_DIACRITICS = str.maketrans("ąćęłńóśźż", "acelnoszz")
+
+def _strip_diacritics(s: str) -> str:
+    return s.translate(_PL_DIACRITICS)
+
+_KEYWORD_RULES_NORM: dict[str, list[tuple[str, str]]] = {
+    kat: [(_strip_diacritics(k), k) for k in kws] for kat, kws in KEYWORD_RULES.items()
 }
 
 PKWIU_RULES: dict[str, str] = {
@@ -179,10 +195,10 @@ WEB_HINTS: dict[str, list[str]] = {
 # ══════════════════════════════════════════════════════════════
 
 def _cat_keywords(opis, indeks="", pkwiu="") -> tuple[str, int, str]:
-    tekst = (opis + " " + indeks + " " + pkwiu).lower()
+    tekst = _strip_diacritics((opis + " " + indeks + " " + pkwiu).lower())
     best, score, match = "inne", 0, ""
-    for kat, kws in KEYWORD_RULES.items():
-        hits = [k for k in kws if k in tekst]
+    for kat, kws in _KEYWORD_RULES_NORM.items():
+        hits = [orig for norm, orig in kws if norm in tekst]
         s = len(hits)*20 + (10 if hits else 0)
         if s > score:
             score, best, match = s, kat, ", ".join(hits[:3])
