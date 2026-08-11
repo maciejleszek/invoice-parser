@@ -569,11 +569,12 @@ def parse_text_euroterm(text: str) -> list[dict]:
 
 def parse_text_fire_eater(text: str) -> list[dict]:
     """
-    Fire Eater (EN): ITEMNO Description qty pcs  DISC%  price  amount
+    Fire Eater (EN): ITEMNO Description qty pcs [DISC%]  price  amount
     Kody: 6-cyfrowe, 5-cyfrowe (63020) i alfanumeryczne (210204-8).
+    Pozycje typu "Handling charge"/"Shipping" nie mają rabatu (DISC% opcjonalny).
     """
     pat = re.compile(
-        r'^([\w][\w\-]*)\s+(.+?)\s+([\d,]+)\s+pcs\s+[\d.]+\s*%\s+([\d,]+)\s+([\d,]+)',
+        r'^([\w][\w\-]*)\s+(.+?)\s+([\d,]+)\s+pcs\s+(?:[\d.]+\s*%\s+)?([\d,]+)\s+([\d,]+)',
         re.M)
     items = []
     for m in pat.finditer(text):
