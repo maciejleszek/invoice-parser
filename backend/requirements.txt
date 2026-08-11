@@ -1,0 +1,7 @@
+pdfplumber
+openpyxl
+requests
+beautifulsoup4
+fastapi
+uvicorn[standard]
+python-multipart

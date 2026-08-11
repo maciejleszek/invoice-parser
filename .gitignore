@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# Generated output / sample data (może zawierać rzeczywiste dane firmowe)
+*.xlsx
+input/*.pdf
+input/*.PDF
+Nowy folder/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
