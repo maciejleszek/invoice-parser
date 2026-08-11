@@ -72,3 +72,24 @@ pliki PDF przeciągając je na stronę lub wybierając z dysku, kliknij
 filtrowana tabela pozycji) i pobierz gotowy plik Excel.
 
 Build produkcyjny: `npm run build` (pliki w `frontend/dist/`).
+
+## Docker
+
+Najprostszy sposób odpalenia całości (backend + frontend) bez instalowania
+Pythona/Node lokalnie:
+
+```bash
+docker compose up --build
+```
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8001
+
+Porty można nadpisać zmiennymi środowiskowymi `BACKEND_PORT` / `FRONTEND_PORT`
+(przydatne, jeśli 8001/5173 są już zajęte). Adres API używany przez frontend
+jest wypiekany do builda przez `VITE_API_URL` — jeśli zmienisz `BACKEND_PORT`,
+ustaw też `VITE_API_URL` na zgodny adres, np.:
+
+```bash
+BACKEND_PORT=9000 VITE_API_URL=http://localhost:9000 docker compose up --build
+```
