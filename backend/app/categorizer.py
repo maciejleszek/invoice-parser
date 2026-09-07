@@ -857,7 +857,14 @@ def extract_header(text: str, tables: list, vendor: str,
         )
 
     if not h.get("data_faktury"):
-        h["data_faktury"] = fv(
+        h["data_faktury"] = {
+            # Siemens: layout dwukolumnowy - etykieta "Data faktury Waluta"
+            # stoi w jednej linii, a wartość ("16.01.2026 PLN") trafia na
+            # kolejną linię tekstu, sklejoną z adresem z sąsiedniej kolumny.
+            "siemens": fv(r"Data faktury\s+Waluta\s*\n[^\n]*?(\d{2}\.\d{2}\.\d{4})\s+PLN"),
+            # Tyco: "Inv No./Date : 9080648368 / 18-Feb-2025"
+            "tyco":    fv(r"Inv\s*No\.?/Date\s*:\s*\S+\s*/\s*(\d{2}-[A-Za-z]{3}-\d{4})"),
+        }.get(vendor) or fv(
             r"Data\s+(?:faktury|wystawienia)[:\s]*(\d{2}[.\-]\d{2}[.\-]\d{4}|\d{4}-\d{2}-\d{2})",
             # KSeF: "Data wystawienia, z zastrzeżeniem art. 106na ust. 1 ustawy: 15.04.2026"
             r"Data\s+wystawienia[^:\n]*:\s*(\d{2}\.\d{2}\.\d{4})",
@@ -868,6 +875,9 @@ def extract_header(text: str, tables: list, vendor: str,
             r"Termin\s+p[łl]atno[śs]ci[:\s]*(\d{2}[.\-]\d{2}[.\-]\d{4}|\d{4}-\d{2}-\d{2})",
             r"Due\s+Date[:\s]+(\d{2}[- ][A-Za-z]{3}[- ]\d{4}|\d{2}\.\d{2}\.\d{4})",
             r"Zahlungsdatum\s*:\s*(\d{2}\.\d{2}\.\d{4})",
+            # Euroterm: kolumny "Forma płatności Termin Kwota ..." -> wiersz
+            # "Przelew 2025-12-19 166,76 PLN ...".
+            r"Przelew\s+(\d{4}-\d{2}-\d{2})",
         )
     if not h.get("numer_zamowienia"):
         h["numer_zamowienia"] = fv(
@@ -900,18 +910,6 @@ def extract_header(text: str, tables: list, vendor: str,
             rf"Warto[śs][cć]\s+sprzeda[żz]y\s+brutto)[^\d\n]*({_MONEY})",
             rf"Total\s+(?:EUR|USD|GBP|PLN|CHF)\s+({_MONEY})",
         ))
-    if not h.get("razem_netto") and vendor == "ksef_generic":
-        # KSeF: nie ma jawnej etykiety "Razem netto" obok kwoty w tekście —
-        # samo słowo "Wartość sprzedaży netto" to tu nagłówek KOLUMNY w
-        # tabeli pozycji, więc łapanie "pierwszej liczby po etykiecie"
-        # (jak niżej) chwyta przypadkowe dane z pierwszego wiersza tabeli.
-        # Bezpieczniej zsumować tabelę "Podsumowanie stawek podatku"
-        # (może mieć kilka wierszy, po jednym na stawkę VAT).
-        net, _vat, brutto = _ksef_vat_summary(tables)
-        if net is not None:
-            h["razem_netto"] = net
-        if not h.get("razem_brutto") and brutto is not None:
-            h["razem_brutto"] = brutto
     if not h.get("razem_netto"):
         # "Subtotal" jest sprawdzany jako ostatni (osobny, niższy priorytet
         # wzorzec) — na fakturach z rabatem (np. Rapidrop 232326) Subtotal
@@ -919,10 +917,25 @@ def extract_header(text: str, tables: list, vendor: str,
         # find_value zwraca dopasowanie pierwszego wzorca, który cokolwiek
         # złapie, więc kolejność argumentów tu ma znaczenie.
         h["razem_netto"] = clean_amount(fv(
-            rf"(?:Total\s+[€£$]?\s*Excl\.?\s*VAT|Net\s+amount|"
-            rf"Razem\s+netto|Warto[śs][cć]\s+sprzeda[żz]y\s+netto)[:\s]*({_MONEY})",
+            rf"(?:Total\s+[€£$]?\s*Excl\.?\s*VAT|Total\s+amount\s*\(excl\s*Taxes?\)|"
+            rf"Net\s+amount|Razem\s+netto|"
+            rf"Warto[śs][cć]\s+sprzeda[żz]y\s+netto)[:\s]*({_MONEY})",
+            # Wiersz podsumowania "RAZEM 507,70 116,77 624,47" (TIM) albo
+            # "Razem: 135,58 31,18 166,76" (Euroterm/Mercor) — pierwsza
+            # liczba to netto. Wyklucza "Razem do zapłaty" (to brutto).
+            rf"(?:RAZEM|Razem)(?!\s+do\s+zapłaty)[:\s]+({_MONEY})",
             rf"Subtotal[:\s]*({_MONEY})",
         ))
+    if not h.get("razem_netto"):
+        # Część faktur (Sonepar, KSeF) nie ma żadnej tekstowej etykiety
+        # "Razem netto" — kwoty są tylko w tabeli "Podsumowanie stawek
+        # podatku" (Lp./Stawka podatku/Kwota netto/Kwota podatku/Kwota
+        # brutto), czasem z kilkoma wierszami (po jednym na stawkę VAT).
+        net, _vat, brutto = _ksef_vat_summary(tables)
+        if net is not None:
+            h["razem_netto"] = net
+        if not h.get("razem_brutto") and brutto is not None:
+            h["razem_brutto"] = brutto
 
     # Waluta – jednoznaczne symbole/deklaracje mają pierwszeństwo przed
     # przypadkowym wystąpieniem innego kodu waluty gdzieś w tekście
