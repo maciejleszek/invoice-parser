@@ -1,38 +1,82 @@
+/* Tokeny zgodne z design-system/tokens.css (appka referencyjna: prefabrykacja) —
+   patrz design-system/DESIGN_SYSTEM.md. Jasny motyw domyślny; ciemny motyw
+   przełączany ręcznie przez ThemeToggle (atrybut data-theme na <html>,
+   zapisywany w localStorage) — mechanizm już tu istniał, tylko wartości
+   kolorów są teraz przebazowane na wspólne tokeny. */
 :root {
-  /* Paleta marki DEKK Fire Solutions (z logo): czerwień, czerń, biel.
-     Jasny motyw jest domyślny — tak jak samo logo (czarny tekst,
-     projektowane na białe tło). */
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --surface-2: #f2f2f4;
-  --border: #e1e2e6;
-  --text: #16171b;
-  --text-muted: #55575f;
-  --text-faint: #8c8e95;
-  --accent: #e4001b;
-  --accent-strong: #c40017;
-  --danger: #d32f2f;
-  --danger-bg: #fbe9e9;
-  --good: #1a8f5c;
-  --mid: #a15c07;
-  --radius: 10px;
+  /* ── Struktura — grafit warsztatowy ── */
+  --ink: #10151f; /* najgłębszy: użyty w hero-nagłówku, tło strony (dark) */
+  --graphite: #1c2230; /* karty w dark mode */
+
+  /* ── Akcenty — każdy ma jedno zadanie, nigdy dekoracja ── */
+  --brand: #c9384a; /* WYŁĄCZNIE akcje główne i aktywna nawigacja */
+  --brand-dark: #a72f3e; /* hover/active brand */
+
+  /* ── Semantyka stanów (inny odcień czerwieni niż --brand — nie mylić) ── */
+  --ok: #059669;
+  --warn: #d97706;
+  --bad: #dc2626;
+
+  /* ── Powierzchnie ── */
+  --bg-app: #f1f4f8; /* tło strony — NIE czysty biały, karty mają się odcinać */
+  --surface: #ffffff; /* karty, inputy, modale */
+  --surface-alt: #f8fafc; /* nagłówki tabel, subtelne tło */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  --border: #e2e8f0; /* obramowania kart/inputów */
+  --border-subtle: #f1f5f9; /* separatory wierszy tabel */
+  --hairline: rgba(16, 21, 31, 0.1);
+
+  /* ── Skala — promienie, cienie, czas przejść ── */
+  --radius-md: 0.5rem; /* przyciski, inputy */
+  --radius-lg: 0.75rem; /* karty, modale */
+  --shadow-card: 0 1px 2px rgba(16, 21, 31, 0.04), 0 1px 3px rgba(16, 21, 31, 0.06);
+  --shadow-lift: 0 4px 12px rgba(16, 21, 31, 0.08), 0 2px 4px rgba(16, 21, 31, 0.04);
+  --transition: 150ms;
+
+  /* ── Typografia ── */
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "SFMono-Regular", monospace;
+
   color-scheme: light;
 }
 
-[data-theme="dark"] {
-  --bg: #0b0c0f;
-  --surface: #17181b;
-  --surface-2: #202126;
-  --border: #2d2e34;
-  --text: #f4f4f2;
-  --text-muted: #a8a9ae;
-  --text-faint: #6c6d73;
-  --accent: #e4001b;
-  --accent-strong: #ff1f3a;
-  --danger: #ff5252;
-  --danger-bg: #3a1216;
-  --good: #34d399;
-  --mid: #fbbf24;
+/* Automatyczny ciemny motyw wg preferencji systemu — tylko dopóki
+   ThemeToggle nie ustawił jawnego wyboru (data-theme). W praktyce
+   ThemeToggle ustawia atrybut od razu po pierwszym renderze, więc to
+   tylko siatka bezpieczeństwa (JS wyłączony / błąd przed hydracją). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-app: var(--ink);
+    --surface: var(--graphite);
+    --surface-alt: rgba(255, 255, 255, 0.05);
+    --text-primary: #e2e8f0;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-faint: #64748b;
+    --border: #334155;
+    --border-subtle: #1e293b;
+    --hairline: rgba(255, 255, 255, 0.12);
+    --shadow-card: none;
+    color-scheme: dark;
+  }
+}
+
+/* Ręczny przełącznik (ThemeToggle) wygrywa w obie strony. */
+:root[data-theme="dark"] {
+  --bg-app: var(--ink);
+  --surface: var(--graphite);
+  --surface-alt: rgba(255, 255, 255, 0.05);
+  --text-primary: #e2e8f0;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+  --border: #334155;
+  --border-subtle: #1e293b;
+  --hairline: rgba(255, 255, 255, 0.12);
+  --shadow-card: none;
   color-scheme: dark;
 }
 
@@ -48,15 +92,59 @@ body,
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--transition) ease, color var(--transition) ease;
 }
 
 button,
 input,
 select {
   font-family: inherit;
+}
+
+/* Cyfry tabularne wszędzie, gdzie prezentujemy dane — ceny, ilości, kwoty
+   wyrównują się w kolumnach zamiast "skakać" przy zmianie cyfr. */
+table,
+.num,
+.mono,
+input[type="number"],
+input[type="date"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Pola dotykowe — appka bywa używana na tablecie, nic poniżej 44px */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  select,
+  input[type="date"] {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

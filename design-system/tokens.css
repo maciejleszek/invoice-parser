@@ -1,0 +1,134 @@
+/* ═══════════════════════════════════════════════════════════════════
+   DEKK — design tokens ("arkusz warsztatowy")
+   Wyciągnięte z aplikacji prefabrykacja (frontend/tailwind.config.js
+   + frontend/src/index.css) jako wspólny, niezależny od frameworka
+   punkt startowy dla wszystkich appek firmowych.
+
+   Ten plik NIE zależy od Tailwinda ani od Reacta — same custom
+   properties CSS. Można go podłączyć do dowolnej appki (Vue, Django
+   templates, czysty HTML) i albo używać zmiennych bezpośrednio
+   w CSS, albo zmapować je na theme.extend.colors Tailwinda, jeśli
+   appka go używa.
+
+   Użycie ciemnego motywu:
+     - domyślnie (brak klasy/atrybutu) → jasny motyw
+     - <html data-theme="dark"> lub <html class="dark">  → ciemny motyw wymuszony
+     - <html data-theme="light"> lub <html class="light"> → jasny motyw wymuszony
+     - bez żadnego z powyższych, ale przeglądarka woli ciemny (prefers-color-scheme)
+       → ciemny motyw automatycznie
+   Appka referencyjna (prefabrykacja) implementuje to przez ThemeContext.jsx:
+   przełącznik ręczny w headerze, wybór zapisany w localStorage, przy starcie
+   fallback na prefers-color-scheme jeśli user nigdy nie wybrał ręcznie.
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Struktura — grafit warsztatowy ── */
+  --ink:               #10151f;   /* najgłębszy: szyna nawigacji, tło strony (dark) */
+  --graphite:          #1c2230;   /* panel boczny / karty w dark mode */
+
+  /* ── Akcenty — każdy ma jedno zadanie, nigdy dekoracja ── */
+  --brand:             #c9384a;   /* WYŁĄCZNIE akcje główne i aktywna nawigacja */
+  --brand-dark:        #a72f3e;   /* hover/active brand */
+  --blueprint:         #2563eb;   /* WYŁĄCZNIE rysunki techniczne i wymiary */
+
+  /* ── Semantyka stanów (nie mylić z --brand — inny odcień czerwieni) ── */
+  --ok:                #059669;
+  --warn:              #d97706;
+  --bad:               #dc2626;
+
+  /* ── Powierzchnie ── */
+  --bg-app:            #f1f4f8;   /* tło strony w jasnym motywie — NIE czysty biały */
+  --surface:           #ffffff;   /* karty, inputy, modale w jasnym motywie */
+  --surface-alt:       #f8fafc;   /* nagłówki tabel, subtelne tło (slate-50) */
+  --text-primary:      #0f172a;
+  --text-secondary:    #475569;   /* slate-600 */
+  --text-muted:        #64748b;   /* slate-500 */
+  --text-faint:        #94a3b8;   /* slate-400 */
+  --border:            #e2e8f0;   /* slate-200 — obramowania kart/inputów */
+  --border-subtle:     #f1f5f9;   /* slate-100 — separatory wierszy tabel */
+  --hairline:          rgba(16, 21, 31, .10);
+
+  /* ── Skala — promienie, cienie, czas przejść ── */
+  --radius-md:         0.5rem;    /* rounded-lg — przyciski, inputy */
+  --radius-lg:         0.75rem;   /* rounded-xl — karty, modale */
+  --shadow-card:       0 1px 2px rgba(16,21,31,.04), 0 1px 3px rgba(16,21,31,.06);
+  --shadow-lift:       0 4px 12px rgba(16,21,31,.08), 0 2px 4px rgba(16,21,31,.04);
+  --transition:        150ms;
+
+  /* ── Typografia ── */
+  --font-sans:         'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono:         'JetBrains Mono', Consolas, 'SFMono-Regular', monospace;
+}
+
+/* Automatyczny ciemny motyw wg preferencji systemu — tylko gdy appka
+   nie wymusiła jawnie jasnego motywu (data-theme="light"/class="light"). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(.light) {
+    --bg-app:          var(--ink);
+    --surface:         var(--graphite);
+    --surface-alt:     rgba(255,255,255,.05);
+    --text-primary:    #e2e8f0;
+    --text-secondary:  #cbd5e1;   /* slate-300 */
+    --text-muted:      #94a3b8;   /* slate-400 */
+    --text-faint:      #64748b;   /* slate-500 */
+    --border:          #334155;  /* slate-700 */
+    --border-subtle:   #1e293b;  /* slate-800 */
+    --hairline:        rgba(255, 255, 255, .12);
+    --shadow-card:      none;
+  }
+}
+
+/* Ręczny przełącznik wygrywa w obie strony — appka referencyjna ustawia
+   klasę `dark` na <html> (ThemeContext.jsx), stąd wspieramy oba warianty:
+   klasę (jak w Tailwind darkMode:'class') i atrybut data-theme. */
+:root[data-theme="dark"], :root.dark {
+  --bg-app:          var(--ink);
+  --surface:         var(--graphite);
+  --surface-alt:     rgba(255,255,255,.05);
+  --text-primary:    #e2e8f0;
+  --text-secondary:  #cbd5e1;
+  --text-muted:      #94a3b8;
+  --text-faint:      #64748b;
+  --border:          #334155;
+  --border-subtle:   #1e293b;
+  --hairline:        rgba(255, 255, 255, .12);
+  --shadow-card:      none;
+}
+
+body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Cyfry tabularne wszędzie, gdzie prezentujemy dane — konwencja "arkusza
+   warsztatowego": liczby wyrównują się w kolumnach jak w tabeli wymiarów. */
+table, .num, .mono, input[type="number"], input[type="date"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+h1, h2, h3 { letter-spacing: -0.02em; }
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Pola dotykowe — na tablecie nic poniżej 44px (scenariusz: hala produkcyjna) */
+@media (pointer: coarse) {
+  button, [role="button"], select, input[type="date"] {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
