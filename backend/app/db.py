@@ -133,7 +133,7 @@ def list_projects() -> list[dict]:
         rows = conn.execute(
             """
             SELECT p.id, p.name, p.created_at,
-                   COUNT(i.id)                                   AS invoice_count,
+                   COUNT(DISTINCT i.id)                           AS invoice_count,
                    COUNT(DISTINCT it.id)                          AS item_count
             FROM projects p
             LEFT JOIN invoices i ON i.project_id = p.id
