@@ -1,6 +1,6 @@
 import { fmtMoney } from "../format";
 
-export default function InvoicesTable({ invoices }) {
+export default function InvoicesTable({ invoices, onDelete }) {
   if (!invoices.length) return null;
 
   return (
@@ -18,11 +18,12 @@ export default function InvoicesTable({ invoices }) {
               <th className="num">Netto</th>
               <th className="num">Brutto</th>
               <th>Waluta</th>
+              {onDelete && <th></th>}
             </tr>
           </thead>
           <tbody>
             {invoices.map((h, i) => (
-              <tr key={i}>
+              <tr key={h.id ?? i}>
                 <td className="mono" title={h.plik}>
                   {h.plik}
                 </td>
@@ -33,6 +34,18 @@ export default function InvoicesTable({ invoices }) {
                 <td className="num">{fmtMoney(h.razem_netto)}</td>
                 <td className="num">{fmtMoney(h.razem_brutto)}</td>
                 <td>{h.waluta || "—"}</td>
+                {onDelete && (
+                  <td>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--danger"
+                      title="Usuń fakturę"
+                      onClick={() => onDelete(h.id)}
+                    >
+                      ×
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

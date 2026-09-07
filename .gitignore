@@ -2,6 +2,7 @@
 .venv/
 __pycache__/
 *.pyc
+backend/data/
 
 # Node / frontend
 frontend/node_modules/

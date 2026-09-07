@@ -15,6 +15,8 @@ backend/
   app/
     categorizer.py   # parsowanie PDF, kategoryzacja, generowanie XLSX
     api.py            # REST API (FastAPI) dla frontendu
+    db.py             # trwałe przechowywanie projektów/faktur (SQLite)
+  data/                # plik app.db (gitignored, tworzony automatycznie)
   requirements.txt
 frontend/              # aplikacja React (Vite)
 input/                  # folder na przykładowe faktury PDF (gitignored)
@@ -51,11 +53,26 @@ uvicorn app.api:app --reload --port 8000
 Jeśli port 8000 jest zajęty przez inną usługę, wybierz inny port i ustaw go
 też w `frontend/.env` (patrz niżej).
 
-Endpointy:
+Endpointy — szybka analiza (bezstanowa, nic nie jest zapisywane):
 - `POST /api/process` — multipart form, pole `files` (wiele PDF), opcjonalnie
   `use_web` (`true`/`false`). Zwraca JSON z fakturami i skategoryzowanymi
   pozycjami oraz `job_id`.
 - `GET /api/download/{job_id}` — pobiera wygenerowany plik Excel dla danej sesji.
+
+Endpointy — projekty (trwałe, zapisywane w SQLite pod `backend/data/app.db`):
+- `POST /api/projects` `{name}` — tworzy projekt.
+- `GET /api/projects` — lista projektów (z liczbą faktur/pozycji).
+- `GET /api/projects/{id}` — szczegóły projektu: lista faktur + dostępne lata.
+- `DELETE /api/projects/{id}` — usuwa projekt wraz z fakturami.
+- `POST /api/projects/{id}/invoices` — jak `/api/process`, ale zapisuje
+  sparsowane faktury do projektu zamiast trzymać je tylko w pamięci.
+- `DELETE /api/projects/{id}/invoices/{invoice_id}` — usuwa jedną fakturę.
+- `GET /api/projects/{id}/download?year=2026` — Excel dla projektu,
+  opcjonalnie tylko za dany rok.
+- `GET /api/items?project_id=&year=` — pozycje (globalnie, dla projektu i/lub
+  dla roku) — używane do wykresu kosztów per kategoria i tabeli pozycji.
+- `GET /api/years?project_id=` — lista lat, dla których są dane (globalnie
+  albo w obrębie jednego projektu) — zasila filtr roku w GUI.
 
 ## Frontend — setup
 
@@ -66,10 +83,15 @@ cp .env.example .env      # ustaw VITE_API_URL, jeśli backend nie działa na :8
 npm run dev
 ```
 
-Otwórz adres wypisany przez Vite (domyślnie http://localhost:5173). Wgraj
-pliki PDF przeciągając je na stronę lub wybierając z dysku, kliknij
-„Kategoryzuj”, przejrzyj wyniki (wykres kosztów per kategoria, tabela faktur,
-filtrowana tabela pozycji) i pobierz gotowy plik Excel.
+Otwórz adres wypisany przez Vite (domyślnie http://localhost:5173). Aplikacja
+ma trzy zakładki:
+- **Szybka analiza** — wgraj PDF-y, zobacz wynik, pobierz Excel; nic nie jest
+  zapisywane (dokładnie tak jak wcześniej).
+- **Projekty** — utwórz projekt, wgrywaj do niego faktury w czasie (dane
+  zostają zapisane), przeglądaj jego faktury/pozycje/wykres kategorii z
+  filtrem roku, pobierz Excel dla projektu (całość albo za wybrany rok).
+- **Podsumowanie roczne** — zestawienie kosztów per kategoria ze wszystkich
+  projektów razem, z filtrem roku (np. wszystko za 2026).
 
 Build produkcyjny: `npm run build` (pliki w `frontend/dist/`).
 
@@ -93,3 +115,7 @@ ustaw też `VITE_API_URL` na zgodny adres, np.:
 ```bash
 BACKEND_PORT=9000 VITE_API_URL=http://localhost:9000 docker compose up --build
 ```
+
+Dane projektów żyją w nazwanym wolumenie Dockera (`backend_data`) i przetrwają
+`docker compose down` / restart kontenera — znikają dopiero po
+`docker compose down -v`.
