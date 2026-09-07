@@ -1,18 +1,38 @@
 :root {
-  --bg: #0f1420;
-  --surface: #161d2e;
-  --surface-2: #1d2740;
-  --border: #2a3550;
-  --text: #e6ebf5;
-  --text-muted: #93a0bd;
-  --text-faint: #5d6a8a;
-  --accent: #5b8cff;
-  --accent-strong: #7aa2ff;
-  --danger: #f87171;
-  --danger-bg: #3a1f24;
+  /* Paleta marki DEKK Fire Solutions (z logo): czerwień, czerń, biel.
+     Jasny motyw jest domyślny — tak jak samo logo (czarny tekst,
+     projektowane na białe tło). */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f2f2f4;
+  --border: #e1e2e6;
+  --text: #16171b;
+  --text-muted: #55575f;
+  --text-faint: #8c8e95;
+  --accent: #e4001b;
+  --accent-strong: #c40017;
+  --danger: #d32f2f;
+  --danger-bg: #fbe9e9;
+  --good: #1a8f5c;
+  --mid: #a15c07;
+  --radius: 10px;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0b0c0f;
+  --surface: #17181b;
+  --surface-2: #202126;
+  --border: #2d2e34;
+  --text: #f4f4f2;
+  --text-muted: #a8a9ae;
+  --text-faint: #6c6d73;
+  --accent: #e4001b;
+  --accent-strong: #ff1f3a;
+  --danger: #ff5252;
+  --danger-bg: #3a1216;
   --good: #34d399;
   --mid: #fbbf24;
-  --radius: 10px;
   color-scheme: dark;
 }
 
@@ -32,6 +52,7 @@ body {
   color: var(--text);
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 button,

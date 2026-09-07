@@ -7,6 +7,7 @@ import ItemsTable from "./components/ItemsTable";
 import ProjectsList from "./components/ProjectsList";
 import ProjectDetail from "./components/ProjectDetail";
 import Dashboard from "./components/Dashboard";
+import ThemeToggle from "./components/ThemeToggle";
 import { fmtMoney } from "./format";
 import * as api from "./api";
 import "./App.css";
@@ -29,12 +30,20 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <div>
-          <h1>Kategoryzacja faktur</h1>
-          <p className="app-header__subtitle">
-            Wgraj faktury PDF, a aplikacja rozpozna dostawcę, wyciągnie pozycje i przypisze im
-            kategorię kosztową.
-          </p>
+        <div className="app-header__top">
+          <div className="app-header__brand">
+            <div className="app-logo">
+              <img src="/dekk-logo.png" alt="DEKK Fire Solutions" />
+            </div>
+            <div>
+              <h1>Kategoryzacja faktur</h1>
+              <p className="app-header__subtitle">
+                Wgraj faktury PDF, a aplikacja rozpozna dostawcę, wyciągnie pozycje i przypisze im
+                kategorię kosztową.
+              </p>
+            </div>
+          </div>
+          <ThemeToggle />
         </div>
         <nav className="app-nav">
           {TABS.map((t) => (
