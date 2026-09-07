@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     waluta            TEXT,
     razem_netto       REAL,
     razem_brutto      REAL,
+    content_hash      TEXT,
     uploaded_at       TEXT
 );
 
@@ -68,6 +69,13 @@ CREATE INDEX IF NOT EXISTS idx_invoices_project ON invoices(project_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_rok      ON invoices(rok);
 CREATE INDEX IF NOT EXISTS idx_items_invoice     ON items(invoice_id);
 """
+
+# Kolumny dodane po pierwszym wydaniu schematu — CREATE TABLE IF NOT EXISTS
+# nie doda ich do już istniejącej (starszej) bazy, więc trzeba dograć ALTER
+# TABLE. Błąd "duplicate column" (baza założona już z tą kolumną) ignorujemy.
+_MIGRATIONS = [
+    "ALTER TABLE invoices ADD COLUMN content_hash TEXT",
+]
 
 
 def _now() -> str:
@@ -101,6 +109,11 @@ def _connect():
 def init_db():
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        for stmt in _MIGRATIONS:
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # kolumna/zmiana już istnieje
 
 
 # ── Projekty ─────────────────────────────────────────────────────────
@@ -157,14 +170,15 @@ _ITEM_FIELDS = [
 ]
 
 
-def save_invoice(project_id: str, header: dict, items: list[dict]) -> str:
+def save_invoice(project_id: str, header: dict, items: list[dict],
+                  content_hash: str | None = None) -> str:
     invoice_id = uuid.uuid4().hex
     rok = extract_year(header.get("data_faktury"))
     with _connect() as conn:
         conn.execute(
-            f"""INSERT INTO invoices (id, project_id, rok, uploaded_at, {", ".join(_INVOICE_FIELDS)})
-                VALUES (?, ?, ?, ?, {", ".join("?" for _ in _INVOICE_FIELDS)})""",
-            [invoice_id, project_id, rok, _now()] + [header.get(f) for f in _INVOICE_FIELDS],
+            f"""INSERT INTO invoices (id, project_id, rok, uploaded_at, content_hash, {", ".join(_INVOICE_FIELDS)})
+                VALUES (?, ?, ?, ?, ?, {", ".join("?" for _ in _INVOICE_FIELDS)})""",
+            [invoice_id, project_id, rok, _now(), content_hash] + [header.get(f) for f in _INVOICE_FIELDS],
         )
         for it in items:
             conn.execute(
@@ -190,6 +204,32 @@ def delete_invoice(project_id: str, invoice_id: str) -> bool:
             "DELETE FROM invoices WHERE id = ? AND project_id = ?", (invoice_id, project_id)
         )
         return cur.rowcount > 0
+
+
+def find_duplicate(project_id: str, content_hash: str | None,
+                    numer_faktury: str | None, sprzedawca: str | None) -> dict | None:
+    """Szuka w projekcie faktury, która wygląda na tę samą co podana:
+    albo bajt w bajt ten sam plik (content_hash), albo ten sam numer
+    faktury u tego samego sprzedawcy (np. ta sama faktura zeskanowana
+    drugi raz jako inny plik PDF)."""
+    with _connect() as conn:
+        if content_hash:
+            row = conn.execute(
+                "SELECT * FROM invoices WHERE project_id = ? AND content_hash = ?",
+                (project_id, content_hash),
+            ).fetchone()
+            if row:
+                return dict(row)
+        if numer_faktury and numer_faktury.strip() and sprzedawca and sprzedawca.strip():
+            row = conn.execute(
+                """SELECT * FROM invoices WHERE project_id = ?
+                   AND lower(trim(numer_faktury)) = lower(trim(?))
+                   AND lower(trim(sprzedawca)) = lower(trim(?))""",
+                (project_id, numer_faktury, sprzedawca),
+            ).fetchone()
+            if row:
+                return dict(row)
+    return None
 
 
 def list_items(project_id: str | None = None, year: int | None = None) -> list[dict]:

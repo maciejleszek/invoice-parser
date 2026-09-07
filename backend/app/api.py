@@ -12,6 +12,7 @@ Uruchomienie (dev):
   uvicorn app.api:app --reload --port 8000
 """
 
+import hashlib
 import io
 import tempfile
 import uuid
@@ -50,6 +51,29 @@ def _startup():
 _JOBS: dict[str, Workbook] = {}
 
 
+def _invoice_key(header: dict) -> tuple[str, str] | None:
+    """Klucz (numer faktury, sprzedawca) znormalizowany do porównań —
+    None jeśli któregoś z pól brakuje (nie ma sensu dopasowywać po pustym)."""
+    numer = (header.get("numer_faktury") or "").strip().lower()
+    sprzedawca = (header.get("sprzedawca") or "").strip().lower()
+    return (numer, sprzedawca) if numer and sprzedawca else None
+
+
+async def _save_uploads(tmp: str, files: list[UploadFile]) -> list[tuple[str, str, str]]:
+    """Zapisuje przesłane PDF-y do katalogu tymczasowego. Zwraca listę
+    (ścieżka, nazwa_pliku, sha256_zawartości) — hash służy do wykrywania,
+    czy ten sam plik nie został wgrany więcej niż raz."""
+    out = []
+    for f in files:
+        if not f.filename.lower().endswith(".pdf"):
+            continue
+        content = await f.read()
+        dest = Path(tmp) / f.filename
+        dest.write_bytes(content)
+        out.append((str(dest), f.filename, hashlib.sha256(content).hexdigest()))
+    return out
+
+
 @app.post("/api/process")
 async def process_invoices(
     files: list[UploadFile] = File(...),
@@ -59,18 +83,41 @@ async def process_invoices(
         raise HTTPException(400, "Nie przesłano żadnych plików.")
 
     with tempfile.TemporaryDirectory() as tmp:
-        paths = []
-        for f in files:
-            if not f.filename.lower().endswith(".pdf"):
-                continue
-            dest = Path(tmp) / f.filename
-            dest.write_bytes(await f.read())
-            paths.append(str(dest))
-
-        if not paths:
+        entries = await _save_uploads(tmp, files)
+        if not entries:
             raise HTTPException(400, "Żaden z przesłanych plików nie jest plikiem PDF.")
 
-        headers, items = categorize_files(paths, use_web=use_web, log=lambda *_: None)
+        headers, items = categorize_files(
+            [path for path, _, _ in entries], use_web=use_web, log=lambda *_: None
+        )
+
+    # Tu nic nie jest trwale zapisywane, więc duplikat w obrębie tej samej
+    # paczki jest tylko ostrzeżeniem informacyjnym — nie blokujemy wyniku.
+    hash_by_name = {name: h for _, name, h in entries}
+    seen_hash: dict[str, str] = {}
+    seen_key: dict[tuple[str, str], str] = {}
+    duplicate_warnings = []
+    for header in headers:
+        fname = header.get("plik")
+        file_hash = hash_by_name.get(fname)
+        key = _invoice_key(header)
+        if file_hash and file_hash in seen_hash:
+            duplicate_warnings.append({
+                "plik": fname, "matches_plik": seen_hash[file_hash],
+                "reason": "identical_file",
+            })
+        elif key and key in seen_key:
+            duplicate_warnings.append({
+                "plik": fname, "matches_plik": seen_key[key],
+                "numer_faktury": header.get("numer_faktury"),
+                "sprzedawca": header.get("sprzedawca"),
+                "reason": "same_invoice_number",
+            })
+        else:
+            if file_hash:
+                seen_hash[file_hash] = fname
+            if key:
+                seen_key[key] = fname
 
     job_id = uuid.uuid4().hex
     _JOBS[job_id] = build_workbook(headers, items)
@@ -79,6 +126,7 @@ async def process_invoices(
         "job_id": job_id,
         "invoices": headers,
         "items": items,
+        "duplicate_warnings": duplicate_warnings,
     }
 
 
@@ -149,30 +197,43 @@ async def add_invoices_to_project(
     if not files:
         raise HTTPException(400, "Nie przesłano żadnych plików.")
 
+    skipped = []
     with tempfile.TemporaryDirectory() as tmp:
-        paths = []
-        for f in files:
-            if not f.filename.lower().endswith(".pdf"):
-                continue
-            dest = Path(tmp) / f.filename
-            dest.write_bytes(await f.read())
-            paths.append(str(dest))
-
-        if not paths:
+        entries = await _save_uploads(tmp, files)
+        if not entries:
             raise HTTPException(400, "Żaden z przesłanych plików nie jest plikiem PDF.")
 
         # Jeden plik na wywołanie categorize_files — batchowanie zwraca płaską
         # listę pozycji ze wszystkich faktur naraz, bez informacji, która
         # pozycja należy do której faktury (dopasowanie po numerze faktury
         # zawiodłoby, gdyby dwie wgrane faktury miały ten sam numer).
-        for path in paths:
+        # Zapisujemy od razu po sprawdzeniu duplikatu, więc kolejne pliki z
+        # tej samej paczki też są sprawdzane względem tego, co już trafiło
+        # do bazy — bez osobnej logiki na duplikaty "w obrębie tej paczki".
+        for path, filename, content_hash in entries:
             headers, items = categorize_files([path], use_web=use_web, log=lambda *_: None)
-            if headers:
-                db.save_invoice(project_id, headers[0], items)
+            if not headers:
+                continue
+            header = headers[0]
+            dup = db.find_duplicate(
+                project_id, content_hash, header.get("numer_faktury"), header.get("sprzedawca")
+            )
+            if dup:
+                skipped.append({
+                    "plik": filename,
+                    "numer_faktury": header.get("numer_faktury"),
+                    "sprzedawca": header.get("sprzedawca"),
+                    "matches_plik": dup.get("plik"),
+                    "reason": "identical_file" if dup.get("content_hash") == content_hash
+                              else "same_invoice_number",
+                })
+                continue
+            db.save_invoice(project_id, header, items, content_hash=content_hash)
 
     return {
         "invoices": db.list_invoices(project_id),
         "items": db.list_items(project_id=project_id),
+        "skipped_duplicates": skipped,
     }
 
 

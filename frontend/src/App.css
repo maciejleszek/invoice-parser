@@ -399,6 +399,25 @@
   border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
+.alert--warning {
+  background: color-mix(in srgb, var(--mid) 12%, transparent);
+  color: var(--mid);
+  border: 1px solid color-mix(in srgb, var(--mid) 40%, transparent);
+}
+
+.alert--warning ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.alert--warning li {
+  color: var(--text);
+}
+
+.alert--warning li strong {
+  color: var(--text);
+}
+
 /* ── Stats row ──────────────────────────────────────── */
 
 .stats-row {

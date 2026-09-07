@@ -8,6 +8,7 @@ import ProjectsList from "./components/ProjectsList";
 import ProjectDetail from "./components/ProjectDetail";
 import Dashboard from "./components/Dashboard";
 import ThemeToggle from "./components/ThemeToggle";
+import DuplicateWarning from "./components/DuplicateWarning";
 import { fmtMoney } from "./format";
 import * as api from "./api";
 import "./App.css";
@@ -198,6 +199,7 @@ function QuickAnalysis() {
         </div>
 
         {error && <div className="alert alert--error">{error}</div>}
+        {result && <DuplicateWarning duplicates={result.duplicate_warnings} />}
       </section>
 
       {result && (

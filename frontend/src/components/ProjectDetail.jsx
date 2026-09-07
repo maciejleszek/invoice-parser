@@ -5,6 +5,7 @@ import CategoryChart from "./CategoryChart";
 import InvoicesTable from "./InvoicesTable";
 import ItemsTable from "./ItemsTable";
 import YearFilter from "./YearFilter";
+import DuplicateWarning from "./DuplicateWarning";
 import { fmtMoney } from "../format";
 import * as api from "../api";
 
@@ -17,6 +18,7 @@ export default function ProjectDetail({ projectId, onBack }) {
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [skippedDuplicates, setSkippedDuplicates] = useState([]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -42,8 +44,10 @@ export default function ProjectDetail({ projectId, onBack }) {
     if (!files.length) return;
     setUploading(true);
     setError(null);
+    setSkippedDuplicates([]);
     try {
-      await api.addInvoicesToProject(projectId, files, useWeb);
+      const res = await api.addInvoicesToProject(projectId, files, useWeb);
+      setSkippedDuplicates(res.skipped_duplicates || []);
       setFiles([]);
       await load();
     } catch (e) {
@@ -116,6 +120,7 @@ export default function ProjectDetail({ projectId, onBack }) {
           </button>
         </div>
         {error && <div className="alert alert--error">{error}</div>}
+        <DuplicateWarning duplicates={skippedDuplicates} skipped />
       </section>
 
       {invoices.length === 0 ? (
