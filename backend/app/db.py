@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS items (
     kategoria_nazwa     TEXT,
     pewnosc             INTEGER,
     zrodlo_dopasowania  TEXT,
-    powod               TEXT
+    powod               TEXT,
+    manual_override     INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_invoices_project ON invoices(project_id);
@@ -75,6 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_items_invoice     ON items(invoice_id);
 # TABLE. Błąd "duplicate column" (baza założona już z tą kolumną) ignorujemy.
 _MIGRATIONS = [
     "ALTER TABLE invoices ADD COLUMN content_hash TEXT",
+    "ALTER TABLE items ADD COLUMN manual_override INTEGER NOT NULL DEFAULT 0",
 ]
 
 
@@ -206,6 +208,37 @@ def delete_invoice(project_id: str, invoice_id: str) -> bool:
         return cur.rowcount > 0
 
 
+_EDITABLE_INVOICE_FIELDS = set(_INVOICE_FIELDS)
+
+
+def update_invoice(project_id: str, invoice_id: str, fields: dict) -> dict | None:
+    """Nadpisuje wybrane pola nagłówka faktury (poprawka ręczna błędu
+    parsera — zły numer, sprzedawca, data...). Tylko pola z _INVOICE_FIELDS
+    są edytowalne; rok jest przeliczany na nowo, jeśli zmienia się data."""
+    updates = {k: v for k, v in fields.items() if k in _EDITABLE_INVOICE_FIELDS}
+    if not updates:
+        return get_invoice(project_id, invoice_id)
+    if "data_faktury" in updates:
+        updates["rok"] = extract_year(updates["data_faktury"])
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    with _connect() as conn:
+        cur = conn.execute(
+            f"UPDATE invoices SET {set_clause} WHERE id = ? AND project_id = ?",
+            [*updates.values(), invoice_id, project_id],
+        )
+        if cur.rowcount == 0:
+            return None
+    return get_invoice(project_id, invoice_id)
+
+
+def get_invoice(project_id: str, invoice_id: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM invoices WHERE id = ? AND project_id = ?", (invoice_id, project_id)
+        ).fetchone()
+        return dict(row) if row else None
+
+
 def find_duplicate(project_id: str, content_hash: str | None,
                     numer_faktury: str | None, sprzedawca: str | None) -> dict | None:
     """Szuka w projekcie faktury, która wygląda na tę samą co podana:
@@ -266,3 +299,68 @@ def distinct_years(project_id: str | None = None) -> list[int]:
     sql += " ORDER BY rok DESC"
     with _connect() as conn:
         return [r[0] for r in conn.execute(sql, params).fetchall()]
+
+
+# ── Ręczna korekta kategorii / ponowna kategoryzacja ────────────────
+
+def set_item_category(item_id: int, kategoria_klucz: str, kategoria_nazwa: str) -> bool:
+    """Ręczna poprawka kategorii jednej pozycji z GUI. Oznaczana jako
+    manual_override, żeby recategorize_items() jej nie nadpisał."""
+    with _connect() as conn:
+        cur = conn.execute(
+            """UPDATE items SET kategoria_klucz = ?, kategoria_nazwa = ?,
+                   pewnosc = 100, zrodlo_dopasowania = 'ręcznie',
+                   powod = 'poprawka ręczna', manual_override = 1
+               WHERE id = ?""",
+            (kategoria_klucz, kategoria_nazwa, item_id),
+        )
+        return cur.rowcount > 0
+
+
+def items_for_recategorize(project_id: str, invoice_id: str | None = None,
+                            force: bool = False) -> list[dict]:
+    """Pozycje kwalifikujące się do ponownego przeliczenia kategorii —
+    domyślnie z pominięciem tych poprawionych ręcznie (chyba że force=True,
+    świadome nadpisanie także ręcznych poprawek)."""
+    sql = """
+        SELECT it.id, it.opis, it.indeks, it.pkwiu
+        FROM items it
+        JOIN invoices i ON i.id = it.invoice_id
+        WHERE i.project_id = ?
+    """
+    params: list = [project_id]
+    if invoice_id:
+        sql += " AND i.id = ?"
+        params.append(invoice_id)
+    if not force:
+        sql += " AND it.manual_override = 0"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
+def bulk_update_item_categories(updates: list[dict]) -> int:
+    """updates: [{id, kategoria_klucz, kategoria_nazwa, pewnosc,
+    zrodlo_dopasowania, powod}, ...] — wynik automatycznej kategoryzacji,
+    nie oznacza manual_override (to zostaje 0)."""
+    if not updates:
+        return 0
+    with _connect() as conn:
+        conn.executemany(
+            """UPDATE items SET kategoria_klucz = :kategoria_klucz,
+                   kategoria_nazwa = :kategoria_nazwa, pewnosc = :pewnosc,
+                   zrodlo_dopasowania = :zrodlo_dopasowania, powod = :powod
+               WHERE id = :id""",
+            updates,
+        )
+    return len(updates)
+
+
+# ── Kopia zapasowa ───────────────────────────────────────────────────
+
+def backup_to_file(dest_path: str) -> None:
+    """Bezpieczna kopia bazy przez SQLite backup API — działa nawet przy
+    równoległych zapisach (w przeciwieństwie do zwykłego shutil.copy pliku
+    .db, który mógłby złapać bazę w trakcie zapisu)."""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    with sqlite3.connect(DB_PATH) as src, sqlite3.connect(dest_path) as dst:
+        src.backup(dst)

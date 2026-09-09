@@ -16,6 +16,7 @@ import hashlib
 import io
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -25,7 +26,7 @@ from openpyxl import Workbook
 from pydantic import BaseModel
 
 from . import db
-from .categorizer import build_workbook, categorize_files
+from .categorizer import KATEGORIE, build_workbook, categorize_files, kategoryzuj
 
 app = FastAPI(title="Invoice Categorizer API")
 
@@ -244,6 +245,73 @@ def delete_invoice(project_id: str, invoice_id: str):
     return {"ok": True}
 
 
+class InvoiceUpdate(BaseModel):
+    numer_faktury: str | None = None
+    sprzedawca: str | None = None
+    data_faktury: str | None = None
+    termin_platnosci: str | None = None
+    numer_zamowienia: str | None = None
+    waluta: str | None = None
+    razem_netto: float | None = None
+    razem_brutto: float | None = None
+
+
+@app.patch("/api/projects/{project_id}/invoices/{invoice_id}")
+def edit_invoice(project_id: str, invoice_id: str, body: InvoiceUpdate):
+    """Ręczna poprawka nagłówka faktury — parser czasem nie trafi idealnie
+    (np. złapie etykietę zamiast wartości), a bez tego jedyną naprawą była
+    zmiana kodu i ponowne wgranie pliku."""
+    # tylko pola faktycznie przesłane przez klienta (nie None-z-braku-wpisania)
+    fields = body.model_dump(exclude_unset=True)
+    updated = db.update_invoice(project_id, invoice_id, fields)
+    if not updated:
+        raise HTTPException(404, "Nie znaleziono faktury w tym projekcie.")
+    return updated
+
+
+class ItemCategoryUpdate(BaseModel):
+    kategoria_klucz: str
+
+
+@app.patch("/api/items/{item_id}")
+def edit_item_category(item_id: int, body: ItemCategoryUpdate):
+    """Ręczna korekta kategorii jednej pozycji z GUI. Oznaczana jako
+    manual_override, więc 'Przelicz kategorie ponownie' jej nie nadpisze."""
+    nazwa = KATEGORIE.get(body.kategoria_klucz)
+    if not nazwa:
+        raise HTTPException(400, f"Nieznana kategoria: {body.kategoria_klucz}")
+    if not db.set_item_category(item_id, body.kategoria_klucz, nazwa):
+        raise HTTPException(404, "Nie znaleziono pozycji.")
+    return {"ok": True, "kategoria_klucz": body.kategoria_klucz, "kategoria_nazwa": nazwa}
+
+
+@app.post("/api/projects/{project_id}/recategorize")
+def recategorize_project(project_id: str, invoice_id: str | None = None,
+                          use_web: bool = False, force: bool = False):
+    """Przelicza kategorie już zapisanych pozycji (np. po rozszerzeniu
+    słownika słów kluczowych) bez konieczności usuwania i ponownego
+    wgrywania faktur. Domyślnie omija pozycje poprawione ręcznie
+    (manual_override) — force=True nadpisuje też te."""
+    if not db.get_project(project_id):
+        raise HTTPException(404, "Nie znaleziono projektu.")
+    items = db.items_for_recategorize(project_id, invoice_id=invoice_id, force=force)
+    all_items = db.items_for_recategorize(project_id, invoice_id=invoice_id, force=True)
+    updates = []
+    for it in items:
+        kat = kategoryzuj(it.get("opis", ""), it.get("indeks", ""), it.get("pkwiu", ""),
+                           use_web=use_web)
+        updates.append({
+            "id": it["id"],
+            "kategoria_klucz": kat["kategoria_klucz"],
+            "kategoria_nazwa": kat["kategoria_nazwa"],
+            "pewnosc": kat["pewnosc"],
+            "zrodlo_dopasowania": kat["zrodlo_dopasowania"],
+            "powod": kat["powod"],
+        })
+    changed = db.bulk_update_item_categories(updates)
+    return {"changed": changed, "skipped_manual": len(all_items) - len(items)}
+
+
 @app.get("/api/projects/{project_id}/download")
 def download_project_workbook(project_id: str, year: int | None = None):
     if not db.get_project(project_id):
@@ -272,6 +340,27 @@ def list_items(project_id: str | None = None, year: int | None = None):
 @app.get("/api/years")
 def list_years(project_id: str | None = None):
     return db.distinct_years(project_id=project_id)
+
+
+# ══════════════════════════════════════════════════════════════
+#  KOPIA ZAPASOWA
+# ══════════════════════════════════════════════════════════════
+
+@app.get("/api/backup")
+def download_backup():
+    """Cała baza (wszystkie projekty/faktury/pozycje) jako plik .db do
+    pobrania — jedyna kopia danych żyje w wolumenie Dockera, więc to
+    najprostsza asekuracja przed `docker compose down -v`/awarią dysku."""
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp) / "backup.db"
+        db.backup_to_file(str(dest))
+        data = dest.read_bytes()
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="kategoryzacja_backup_{stamp}.db"'},
+    )
 
 
 @app.get("/api/health")

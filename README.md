@@ -16,8 +16,10 @@ backend/
     categorizer.py   # parsowanie PDF, kategoryzacja, generowanie XLSX
     api.py            # REST API (FastAPI) dla frontendu
     db.py             # trwałe przechowywanie projektów/faktur (SQLite)
+  tests/               # pytest — jednostkowe + end-to-end na prawdziwych PDF-ach
   data/                # plik app.db (gitignored, tworzony automatycznie)
   requirements.txt
+  requirements-dev.txt # + pytest
 frontend/              # aplikacja React (Vite)
 input/                  # folder na przykładowe faktury PDF (gitignored)
 ```
@@ -29,6 +31,25 @@ python -m venv .venv
 .venv\Scripts\activate          # Windows
 pip install -r backend/requirements.txt
 ```
+
+### Testy
+
+```bash
+pip install -r backend/requirements-dev.txt
+cd backend
+pytest tests/ -v
+```
+
+Dwa rodzaje testów:
+- **Jednostkowe** (`test_categorizer_units.py`) — czyste funkcje (parsowanie
+  kwot, wykrywanie dostawcy, mapowanie kolumn tabeli...), bez plików PDF,
+  zawsze się uruchamiają. Każdy przypadek odpowiada realnemu bugowi
+  znalezionemu i naprawionemu podczas pracy nad appką.
+- **End-to-end** (`test_categorizer_fixtures.py`) — `parse_invoice()` na
+  prawdziwych fakturach z `input/`/`Nowy folder/`, porównane z ręcznie
+  zweryfikowanymi wartościami. Te pliki są celowo poza gitem (mogą zawierać
+  rzeczywiste dane firmowe) — na świeżym klonie repo testy są pomijane
+  (skipped), nie failują.
 
 ### CLI
 
@@ -66,13 +87,28 @@ Endpointy — projekty (trwałe, zapisywane w SQLite pod `backend/data/app.db`):
 - `DELETE /api/projects/{id}` — usuwa projekt wraz z fakturami.
 - `POST /api/projects/{id}/invoices` — jak `/api/process`, ale zapisuje
   sparsowane faktury do projektu zamiast trzymać je tylko w pamięci.
+  Duplikaty (ten sam plik albo ten sam numer faktury u tego samego
+  sprzedawcy) są pomijane i zwracane w `skipped_duplicates`.
+- `PATCH /api/projects/{id}/invoices/{invoice_id}` — ręczna poprawka
+  nagłówka faktury (numer, sprzedawca, daty, kwoty...) — parser czasem
+  nie trafi idealnie, to naprawia to bez edycji kodu.
 - `DELETE /api/projects/{id}/invoices/{invoice_id}` — usuwa jedną fakturę.
 - `GET /api/projects/{id}/download?year=2026` — Excel dla projektu,
   opcjonalnie tylko za dany rok.
+- `POST /api/projects/{id}/recategorize?use_web=&force=` — przelicza
+  kategorie już zapisanych pozycji (np. po rozszerzeniu słownika słów
+  kluczowych) bez usuwania i ponownego wgrywania faktur. Domyślnie omija
+  pozycje poprawione ręcznie; `force=true` nadpisuje też te.
 - `GET /api/items?project_id=&year=` — pozycje (globalnie, dla projektu i/lub
   dla roku) — używane do wykresu kosztów per kategoria i tabeli pozycji.
+- `PATCH /api/items/{item_id}` `{kategoria_klucz}` — ręczna korekta kategorii
+  jednej pozycji z GUI (oznaczana jako `manual_override`, więc
+  `recategorize` jej domyślnie nie nadpisze).
 - `GET /api/years?project_id=` — lista lat, dla których są dane (globalnie
   albo w obrębie jednego projektu) — zasila filtr roku w GUI.
+- `GET /api/backup` — cała baza (wszystkie projekty/faktury/pozycje) jako
+  plik `.db` do pobrania — asekuracja przed `docker compose down -v`/awarią
+  dysku (jedyna kopia danych żyje w wolumenie Dockera).
 
 ## Frontend — setup
 
@@ -88,8 +124,13 @@ ma trzy zakładki:
 - **Szybka analiza** — wgraj PDF-y, zobacz wynik, pobierz Excel; nic nie jest
   zapisywane (dokładnie tak jak wcześniej).
 - **Projekty** — utwórz projekt, wgrywaj do niego faktury w czasie (dane
-  zostają zapisane), przeglądaj jego faktury/pozycje/wykres kategorii z
-  filtrem roku, pobierz Excel dla projektu (całość albo za wybrany rok).
+  zostają zapisane), przeglądaj jego faktury/pozycje/wykres kategorii i
+  trend miesięczny z filtrem roku, pobierz Excel dla projektu (całość albo
+  za wybrany rok). Faktury można sortować/wyszukiwać, poprawiać ręcznie
+  (przycisk ✎) i usuwać (z potwierdzeniem). Kategorię pozycji można
+  poprawić bezpośrednio z listy rozwijanej w tabeli, a przycisk „Przelicz
+  kategorie ponownie” przelicza wszystkie pozycje projektu na nowo (z
+  poszanowaniem ręcznych poprawek).
 - **Podsumowanie roczne** — zestawienie kosztów per kategoria ze wszystkich
   projektów razem, z filtrem roku (np. wszystko za 2026).
 

@@ -175,6 +175,13 @@ PKWIU_RULES: dict[str, str] = {
     "27.12":    "elektryka",
     "28.29":    "automatyka",
     "28.14":    "hydraulika",            # Armatura / zawory
+    "26.30":    "teletechnika",          # Sprzęt (tele)komunikacyjny (poza 26.30.50 wyżej)
+    "25.94":    "mechanika",             # Wyroby złączne i śruby
+    "25.73":    "narzedzia",             # Narzędzia
+    "20.30":    "ogolnobudowlane",       # Farby, lakiery i podobne środki pokrywające
+    "49.41":    "transport",             # Transport drogowy towarów
+    "52.29":    "transport",             # Pozostała działalność wspomagająca transport
+    "53.20":    "transport",             # Pozostała działalność pocztowa i kurierska
 }
 
 WEB_HINTS: dict[str, list[str]] = {
@@ -547,37 +554,39 @@ def parse_text_siemens(text: str) -> list[dict]:
 
 def parse_text_mercor(text: str) -> list[dict]:
     """
-    Mercor: 1 KOD jm ILOSC CENA PLN NETTO VAT% KVATVAT BRUTTO
+    Mercor: 1 KOD JM ILOŚĆ CENA PLN NETTO VAT% KWOTA_VAT BRUTTO
             Opis produktu (następna linia)
-    Używa tokenizacji zamiast złożonego regex (liczby z polskim separatorem '1 560,30').
+    Liczby mają polski separator tysięcy (spacja: "1 560,30"), więc nie
+    da się rozdzielić pól samym `\\s+` — trzeba je łapać jako osobne grupy.
     """
     lines = text.split('\n')
     items = []
+    pat = re.compile(
+        r'^(\d+)\s+(\S+)\s+(\w+\.?)\s+([\d,]+)\s+'      # lp, indeks, jm, ilość
+        r'([\d\s,]+?)\s+PLN\s+'                          # cena netto
+        r'([\d\s,]+?)\s+(\d+)%\s+'                       # wartość netto, stawka
+        r'([\d\s,]+?)\s+([\d\s,]+?)\s*$'                 # kwota VAT, wartość brutto
+    )
     for i, line in enumerate(lines):
-        m = re.match(r'^(\d+)\s+(\S+)\s+(\w+\.?)\s+', line)
+        m = pat.match(line)
         if not m: continue
-        # Tokenizujemy resztę: szukamy PLN, VAT%, i wartości liczbowych
-        rest = line[m.end():]
-        # Znajdź PLN i podziel
-        pln_m = re.search(r'([\d\s,]+?)\s+PLN\s+([\d\s,]+?)\s+(\d+)%\s+([\d\s,]+?)\s+([\d\s,]+?)\s*$', rest)
-        if not pln_m: continue
 
         # Opis: następna linia (jeśli nie jest kolejnym itemem / Razem)
         opis = m.group(2)  # fallback: symbol
-        if i+1 < len(lines):
-            nxt = lines[i+1].strip()
+        if i + 1 < len(lines):
+            nxt = lines[i + 1].strip()
             if nxt and not re.match(r'^\d+\s+\S|\s*Razem|Sprawę', nxt):
                 opis = nxt
 
         items.append({
             "lp": int(m.group(1)), "opis": opis, "indeks": m.group(2), "pkwiu": "",
-            "ilosc": clean_amount(m.group(3).split()[0]) if m.group(3) else None,
+            "ilosc": clean_amount(m.group(4)),
             "jm": m.group(3),
-            "cena_netto":    clean_amount(pln_m.group(1)),
-            "wartosc_netto": clean_amount(pln_m.group(2)),
-            "stawka_vat":    pln_m.group(3)+"%",
-            "kwota_vat":     clean_amount(pln_m.group(4)),
-            "wartosc_brutto":clean_amount(pln_m.group(5)),
+            "cena_netto":    clean_amount(m.group(5)),
+            "wartosc_netto": clean_amount(m.group(6)),
+            "stawka_vat":    m.group(7) + "%",
+            "kwota_vat":     clean_amount(m.group(8)),
+            "wartosc_brutto":clean_amount(m.group(9)),
         })
     return items
 
