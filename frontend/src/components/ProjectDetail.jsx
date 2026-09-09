@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import UploadZone from "./UploadZone";
 import StatTile from "./StatTile";
 import CategoryChart from "./CategoryChart";
+import TrendChart from "./TrendChart";
 import InvoicesTable from "./InvoicesTable";
 import ItemsTable from "./ItemsTable";
 import YearFilter from "./YearFilter";
 import DuplicateWarning from "./DuplicateWarning";
+import InvoiceEditModal from "./InvoiceEditModal";
+import Loading from "./Loading";
 import { fmtMoney } from "../format";
 import * as api from "../api";
 
@@ -16,9 +19,12 @@ export default function ProjectDetail({ projectId, onBack }) {
   const [files, setFiles] = useState([]);
   const [useWeb, setUseWeb] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null); // { done, total, current }
+  const [recategorizing, setRecategorizing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [skippedDuplicates, setSkippedDuplicates] = useState([]);
+  const [editingInvoice, setEditingInvoice] = useState(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -45,24 +51,84 @@ export default function ProjectDetail({ projectId, onBack }) {
     setUploading(true);
     setError(null);
     setSkippedDuplicates([]);
+    setUploadProgress({ done: 0, total: files.length, current: files[0].name });
     try {
-      const res = await api.addInvoicesToProject(projectId, files, useWeb);
-      setSkippedDuplicates(res.skipped_duplicates || []);
+      // Jeden plik na request zamiast całej paczki naraz — pozwala pokazać
+      // realny postęp (który plik akurat się przetwarza), przydatne przy
+      // wielu fakturach naraz, zwłaszcza z włączonym wyszukiwaniem w sieci.
+      let lastRes = null;
+      for (let i = 0; i < files.length; i++) {
+        setUploadProgress({ done: i, total: files.length, current: files[i].name });
+        lastRes = await api.addInvoicesToProject(projectId, [files[i]], useWeb);
+        setSkippedDuplicates((prev) => [...prev, ...(lastRes.skipped_duplicates || [])]);
+      }
+      setUploadProgress({ done: files.length, total: files.length, current: null });
       setFiles([]);
       await load();
     } catch (e) {
       setError(e.message);
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }
 
-  async function handleDeleteInvoice(invoiceId) {
+  async function handleDeleteInvoice(invoice) {
+    if (!window.confirm(`Usunąć fakturę „${invoice.plik}” (${invoice.numer_faktury || "?"})?`)) {
+      return;
+    }
     try {
-      await api.deleteInvoice(projectId, invoiceId);
+      await api.deleteInvoice(projectId, invoice.id);
       await load();
     } catch (e) {
       setError(e.message);
+    }
+  }
+
+  async function handleSaveInvoiceEdit(fields) {
+    await api.updateInvoice(projectId, editingInvoice.id, fields);
+    await load();
+  }
+
+  async function handleCategoryChange(itemId, kategoriaKlucz) {
+    // Optymistyczna aktualizacja — nie czekamy na serwer, żeby dropdown
+    // nie "mrugał" z powrotem do starej wartości.
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? { ...it, kategoria_klucz: kategoriaKlucz, manual_override: 1 }
+          : it
+      )
+    );
+    try {
+      await api.updateItemCategory(itemId, kategoriaKlucz);
+    } catch (e) {
+      setError(e.message);
+      await load(); // cofnij optymistyczną zmianę, jeśli zapis się nie udał
+    }
+  }
+
+  async function handleRecategorize() {
+    if (
+      !window.confirm(
+        "Przeliczyć kategorie wszystkich pozycji tego projektu na nowo? Ręczne poprawki zostaną zachowane."
+      )
+    ) {
+      return;
+    }
+    setRecategorizing(true);
+    setError(null);
+    try {
+      const res = await api.recategorizeProject(projectId, { useWeb });
+      await load();
+      window.alert(
+        `Przeliczono ${res.changed} pozycji` +
+          (res.skipped_manual ? ` (pominięto ${res.skipped_manual} poprawionych ręcznie).` : ".")
+      );
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRecategorizing(false);
     }
   }
 
@@ -80,7 +146,7 @@ export default function ProjectDetail({ projectId, onBack }) {
     return Array.from(agg.entries());
   }, [invoices]);
 
-  if (loading) return <p className="muted-note">Wczytywanie projektu…</p>;
+  if (loading) return <Loading label="Wczytywanie projektu…" />;
   if (!project) return <p className="muted-note">Nie znaleziono projektu.</p>;
 
   return (
@@ -112,7 +178,10 @@ export default function ProjectDetail({ projectId, onBack }) {
           >
             {uploading ? (
               <>
-                <span className="spinner" /> Przetwarzanie…
+                <span className="spinner" />
+                {uploadProgress
+                  ? `Plik ${uploadProgress.done + 1}/${uploadProgress.total}…`
+                  : "Przetwarzanie…"}
               </>
             ) : (
               `Dodaj do projektu (${files.length})`
@@ -146,13 +215,37 @@ export default function ProjectDetail({ projectId, onBack }) {
 
           <section className="content-grid">
             <CategoryChart items={items} />
-            <InvoicesTable invoices={invoices} onDelete={handleDeleteInvoice} />
+            <InvoicesTable
+              invoices={invoices}
+              onDelete={handleDeleteInvoice}
+              onEdit={setEditingInvoice}
+            />
           </section>
 
+          <TrendChart items={items} />
+
+          <div className="toolbar-row">
+            <button
+              className="btn btn--ghost"
+              onClick={handleRecategorize}
+              disabled={recategorizing}
+            >
+              {recategorizing ? <span className="spinner" /> : null} Przelicz kategorie ponownie
+            </button>
+          </div>
+
           <section>
-            <ItemsTable items={items} />
+            <ItemsTable items={items} onCategoryChange={handleCategoryChange} />
           </section>
         </>
+      )}
+
+      {editingInvoice && (
+        <InvoiceEditModal
+          invoice={editingInvoice}
+          onClose={() => setEditingInvoice(null)}
+          onSave={handleSaveInvoiceEdit}
+        />
       )}
     </div>
   );

@@ -62,8 +62,27 @@ export function deleteInvoice(projectId, invoiceId) {
   return request(`/api/projects/${projectId}/invoices/${invoiceId}`, { method: "DELETE" });
 }
 
+export function updateInvoice(projectId, invoiceId, fields) {
+  return request(`/api/projects/${projectId}/invoices/${invoiceId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+}
+
 export function downloadProjectUrl(projectId, year) {
   return `${API_URL}/api/projects/${projectId}/download${qs({ year })}`;
+}
+
+export function recategorizeProject(projectId, { invoiceId, useWeb, force } = {}) {
+  return request(
+    `/api/projects/${projectId}/recategorize${qs({
+      invoice_id: invoiceId,
+      use_web: useWeb ? "true" : undefined,
+      force: force ? "true" : undefined,
+    })}`,
+    { method: "POST" }
+  );
 }
 
 // ── Pozycje / kategorie (globalnie albo per projekt) ────────────────
@@ -74,4 +93,18 @@ export function listItems({ projectId, year } = {}) {
 
 export function listYears({ projectId } = {}) {
   return request(`/api/years${qs({ project_id: projectId })}`);
+}
+
+export function updateItemCategory(itemId, kategoriaKlucz) {
+  return request(`/api/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kategoria_klucz: kategoriaKlucz }),
+  });
+}
+
+// ── Kopia zapasowa ───────────────────────────────────────────────────
+
+export function backupUrl() {
+  return `${API_URL}/api/backup`;
 }

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import Loading from "./Loading";
+import * as api from "../api";
 
 export default function ProjectsList({ projects, loading, error, onCreate, onOpen, onDelete }) {
   const [name, setName] = useState("");
@@ -31,11 +33,14 @@ export default function ProjectsList({ projects, loading, error, onCreate, onOpe
           <button className="btn btn--primary" type="submit" disabled={creating || !name.trim()}>
             + Nowy projekt
           </button>
+          <a className="btn btn--ghost" href={api.backupUrl()} title="Pobierz kopię całej bazy danych">
+            ⬇ Kopia zapasowa
+          </a>
         </form>
         {error && <div className="alert alert--error">{error}</div>}
       </section>
 
-      {loading && <p className="muted-note">Wczytywanie projektów…</p>}
+      {loading && <Loading label="Wczytywanie projektów…" />}
 
       {!loading && projects.length === 0 && (
         <p className="muted-note">

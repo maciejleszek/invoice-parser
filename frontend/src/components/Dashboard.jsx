@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import StatTile from "./StatTile";
 import CategoryChart from "./CategoryChart";
+import TrendChart from "./TrendChart";
 import ItemsTable from "./ItemsTable";
 import YearFilter from "./YearFilter";
+import Loading from "./Loading";
 import { fmtMoney } from "../format";
 import * as api from "../api";
 
@@ -26,6 +28,20 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, [year]);
 
+  async function handleCategoryChange(itemId, kategoriaKlucz) {
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId ? { ...it, kategoria_klucz: kategoriaKlucz, manual_override: 1 } : it
+      )
+    );
+    try {
+      await api.updateItemCategory(itemId, kategoriaKlucz);
+    } catch (e) {
+      setError(e.message);
+      api.listItems({ year }).then(setItems);
+    }
+  }
+
   const invoiceCount = useMemo(
     () => new Set(items.map((it) => it.invoice_id)).size,
     [items]
@@ -47,7 +63,7 @@ export default function Dashboard() {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
-      {loading && <p className="muted-note">Wczytywanie…</p>}
+      {loading && <Loading label="Wczytywanie podsumowania…" />}
 
       {!loading && items.length === 0 && (
         <p className="muted-note">
@@ -70,8 +86,10 @@ export default function Dashboard() {
             <CategoryChart items={items} />
           </section>
 
+          <TrendChart items={items} />
+
           <section>
-            <ItemsTable items={items} />
+            <ItemsTable items={items} onCategoryChange={handleCategoryChange} />
           </section>
         </>
       )}

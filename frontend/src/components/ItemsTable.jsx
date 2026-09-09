@@ -11,9 +11,23 @@ function ConfidenceBadge({ value }) {
   );
 }
 
-export default function ItemsTable({ items }) {
+const CONFIDENCE_FILTERS = [
+  { value: "all", label: "Dowolna pewność" },
+  { value: "low", label: "Do przeglądu (<70%)" },
+  { value: "very_low", label: "Bardzo niepewne (<40%)" },
+];
+
+function passesConfidence(pewnosc, filter) {
+  const v = pewnosc ?? 0;
+  if (filter === "low") return v < 70;
+  if (filter === "very_low") return v < 40;
+  return true;
+}
+
+export default function ItemsTable({ items, onCategoryChange }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
+  const [confidence, setConfidence] = useState("all");
 
   const usedCategories = useMemo(
     () =>
@@ -25,6 +39,7 @@ export default function ItemsTable({ items }) {
     const q = query.trim().toLowerCase();
     return items.filter((it) => {
       if (category !== "all" && it.kategoria_klucz !== category) return false;
+      if (!passesConfidence(it.pewnosc, confidence)) return false;
       if (!q) return true;
       return (
         (it.opis || "").toLowerCase().includes(q) ||
@@ -32,7 +47,7 @@ export default function ItemsTable({ items }) {
         (it.numer_faktury || "").toLowerCase().includes(q)
       );
     });
-  }, [items, query, category]);
+  }, [items, query, category, confidence]);
 
   if (!items.length) return null;
 
@@ -60,6 +75,17 @@ export default function ItemsTable({ items }) {
               </option>
             ))}
           </select>
+          <select
+            value={confidence}
+            onChange={(e) => setConfidence(e.target.value)}
+            className="select-input"
+          >
+            {CONFIDENCE_FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -81,7 +107,7 @@ export default function ItemsTable({ items }) {
           </thead>
           <tbody>
             {filtered.map((it, i) => (
-              <tr key={i}>
+              <tr key={it.id ?? i}>
                 <td className="mono">{it.numer_faktury || "—"}</td>
                 <td className="opis-cell" title={it.opis}>
                   {it.opis || "—"}
@@ -93,14 +119,31 @@ export default function ItemsTable({ items }) {
                 <td className="num">{fmtMoney(it.wartosc_netto)}</td>
                 <td className="num">{fmtMoney(it.wartosc_brutto)}</td>
                 <td>
-                  <span
-                    className="category-pill"
-                    style={{
-                      "--pill-color": categoryColor(it.kategoria_klucz),
-                    }}
-                  >
-                    {categoryLabel(it.kategoria_klucz)}
-                  </span>
+                  {onCategoryChange && it.id != null ? (
+                    <select
+                      className="category-pill-select"
+                      style={{ "--pill-color": categoryColor(it.kategoria_klucz) }}
+                      value={it.kategoria_klucz}
+                      title={it.manual_override ? "Kategoria poprawiona ręcznie" : undefined}
+                      onChange={(e) => onCategoryChange(it.id, e.target.value)}
+                    >
+                      {CATEGORY_ORDER.map((c) => (
+                        <option key={c} value={c}>
+                          {categoryLabel(c)}
+                          {it.manual_override && c === it.kategoria_klucz ? " ✓" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span
+                      className="category-pill"
+                      style={{
+                        "--pill-color": categoryColor(it.kategoria_klucz),
+                      }}
+                    >
+                      {categoryLabel(it.kategoria_klucz)}
+                    </span>
+                  )}
                 </td>
                 <td>
                   <ConfidenceBadge value={it.pewnosc ?? 0} />

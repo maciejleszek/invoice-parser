@@ -104,11 +104,23 @@
 /* ── Widok projektu / dashboardu ────────────────────── */
 
 .view-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  padding-bottom: 0.75rem;
+}
+
+.view-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(to right, var(--brand) 0 72px, var(--hairline) 72px 100%);
 }
 
 .view-header__title {
@@ -654,6 +666,31 @@
   white-space: nowrap;
 }
 
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.data-table th.sortable:hover {
+  color: var(--text-primary);
+}
+
+.row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.standalone-card {
+  margin-bottom: 24px;
+}
+
+.toolbar-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 .data-table td {
   padding: 9px 10px;
   border-bottom: 1px solid var(--border-subtle);
@@ -695,6 +732,10 @@
 
 /* ── Category pill / confidence badge ──────────────────*/
 
+/* Odznaka tonalna: jasne tło + ciemny tekst tego samego odcienia w jasnym
+   motywie, odwrotnie (ciemne tło + jasny tekst) w ciemnym — ta sama
+   receptura co .badge-ok/.badge-warn/.badge-bad w design systemie,
+   uogólniona przez color-mix zamiast osobnych wartości per kategoria. */
 .category-pill {
   display: inline-flex;
   align-items: center;
@@ -702,10 +743,16 @@
   font-size: 12px;
   padding: 3px 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--pill-color) 18%, var(--surface-alt));
-  color: var(--pill-color);
-  border: 1px solid color-mix(in srgb, var(--pill-color) 40%, transparent);
+  background: color-mix(in srgb, var(--pill-color) 15%, white);
+  color: color-mix(in srgb, var(--pill-color) 65%, black);
+  border: 1px solid color-mix(in srgb, var(--pill-color) 35%, white);
   white-space: nowrap;
+}
+
+:root[data-theme="dark"] .category-pill {
+  background: color-mix(in srgb, var(--pill-color) 30%, black);
+  color: color-mix(in srgb, var(--pill-color) 70%, white);
+  border-color: color-mix(in srgb, var(--pill-color) 45%, black);
 }
 
 .category-pill::before {
@@ -717,6 +764,31 @@
   flex-shrink: 0;
 }
 
+/* Wersja edytowalna (<select>) — ten sam wygląd co .category-pill, plus
+   kursor/strzałka sugerujące, że to kontrolka, nie tylko etykieta. */
+.category-pill-select {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 24px 3px 10px;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--pill-color) 15%, white);
+  color: color-mix(in srgb, var(--pill-color) 65%, black);
+  border: 1px solid color-mix(in srgb, var(--pill-color) 35%, white);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+:root[data-theme="dark"] .category-pill-select {
+  background-color: color-mix(in srgb, var(--pill-color) 30%, black);
+  color: color-mix(in srgb, var(--pill-color) 70%, white);
+  border-color: color-mix(in srgb, var(--pill-color) 45%, black);
+}
+
 .confidence {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -726,16 +798,198 @@
 }
 
 .confidence--high {
-  color: var(--ok);
-  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: color-mix(in srgb, var(--ok) 75%, black);
+  background: color-mix(in srgb, var(--ok) 15%, white);
 }
 
 .confidence--mid {
-  color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: color-mix(in srgb, var(--warn) 75%, black);
+  background: color-mix(in srgb, var(--warn) 15%, white);
 }
 
 .confidence--low {
-  color: var(--bad);
-  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  color: color-mix(in srgb, var(--bad) 75%, black);
+  background: color-mix(in srgb, var(--bad) 15%, white);
+}
+
+:root[data-theme="dark"] .confidence--high {
+  color: color-mix(in srgb, var(--ok) 70%, white);
+  background: color-mix(in srgb, var(--ok) 30%, black);
+}
+
+:root[data-theme="dark"] .confidence--mid {
+  color: color-mix(in srgb, var(--warn) 70%, white);
+  background: color-mix(in srgb, var(--warn) 30%, black);
+}
+
+:root[data-theme="dark"] .confidence--low {
+  color: color-mix(in srgb, var(--bad) 70%, white);
+  background: color-mix(in srgb, var(--bad) 30%, black);
+}
+
+/* ── Modal ──────────────────────────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+  animation: modal-fade 150ms ease;
+}
+
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.modal-panel {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lift), 0 20px 48px rgba(16, 21, 31, 0.25);
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: modal-pop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+.modal-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-panel__header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.modal-panel__body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-panel__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.field {
+  width: 100%;
+}
+
+.modal-panel__body .text-input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* ── Eyebrow — mikro-etykieta nad sekcją/polem/KPI ─────*/
+
+.eyebrow {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  margin: 0 0 4px;
+}
+
+/* ── Nagłówek strony "titleblock" — eyebrow + H1/H2 + linia pod spodem,
+   pierwsze ~72px w kolorze marki, reszta hairline neutralny. ── */
+
+.titleblock {
+  position: relative;
+  padding-bottom: 0.75rem;
+}
+
+.titleblock::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(to right, var(--brand) 0 72px, var(--hairline) 72px 100%);
+}
+
+/* ── Stan ładowania — trzy pulsujące kreski w kolorze marki ──────────*/
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4rem 0;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+.loading-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 22px;
+}
+
+.loading-bars span {
+  width: 4px;
+  border-radius: 2px;
+  background: var(--brand);
+  animation: loading-pulse 0.9s ease-in-out infinite;
+}
+
+.loading-bars span:nth-child(1) {
+  height: 8px;
+  animation-delay: 0ms;
+}
+
+.loading-bars span:nth-child(2) {
+  height: 14px;
+  animation-delay: 140ms;
+}
+
+.loading-bars span:nth-child(3) {
+  height: 20px;
+  animation-delay: 280ms;
+}
+
+@keyframes loading-pulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scaleY(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
 }
