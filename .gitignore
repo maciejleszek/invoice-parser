@@ -15,6 +15,9 @@ input/*.pdf
 input/*.PDF
 Nowy folder/
 
+# Vercel CLI (lokalne powiązanie projektu, per-maszyna)
+.vercel/
+
 # OS / editor
 .DS_Store
 Thumbs.db

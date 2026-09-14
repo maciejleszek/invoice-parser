@@ -1,0 +1,13 @@
+# Kopia backend/requirements.txt — Vercel Python builder (@vercel/python)
+# szuka requirements.txt w KORZENIU repo, nie w backend/. Docker dalej
+# używa backend/requirements.txt (COPY tam jest ustawiony na ten katalog).
+# Przy zmianie zależności zaktualizuj OBA pliki.
+pdfplumber
+openpyxl
+requests
+beautifulsoup4
+fastapi
+uvicorn[standard]
+python-multipart
+sqlalchemy>=2.0
+psycopg[binary]

@@ -1,4 +1,10 @@
-export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// `??` (nie `||`) celowo — na Vercelu backend i frontend są pod tym samym
+// origin (vercel.json kieruje /api/* do funkcji serverless), więc
+// VITE_API_URL jest tam ustawione na PUSTY STRING (żeby fetch('' + '/api/x')
+// trafiał względnie, na ten sam origin). `||` potraktowałoby pusty string
+// jak "nieustawione" i i tak wróciłoby do localhost:8000, co zepsułoby
+// deployment. Lokalnie/w Dockerze .env normalnie ustawia realny URL.
+export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_URL}${path}`, options);

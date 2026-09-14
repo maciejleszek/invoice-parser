@@ -4,9 +4,10 @@ api.py — REST API dla frontendu React.
 Dwa tryby pracy:
   • Szybka analiza (bezstanowa): POST /api/process + GET /api/download/{job_id}
     — nic nie jest zapisywane, wynik żyje tylko w pamięci procesu.
-  • Projekty (trwałe, SQLite): utwórz projekt, wgrywaj do niego faktury,
-    przeglądaj/filtruj pozycje i kategorie per projekt oraz globalnie
-    (np. rozbicie kosztów za dany rok).
+  • Projekty (trwałe — SQLite lokalnie/Docker, Postgres na Vercelu, patrz
+    db.py): utwórz projekt, wgrywaj do niego faktury, przeglądaj/filtruj
+    pozycje i kategorie per projekt oraz globalnie (np. rozbicie kosztów
+    za dany rok).
 
 Uruchomienie (dev):
   uvicorn app.api:app --reload --port 8000
@@ -14,6 +15,7 @@ Uruchomienie (dev):
 
 import hashlib
 import io
+import json
 import tempfile
 import uuid
 from datetime import datetime
@@ -348,18 +350,18 @@ def list_years(project_id: str | None = None):
 
 @app.get("/api/backup")
 def download_backup():
-    """Cała baza (wszystkie projekty/faktury/pozycje) jako plik .db do
-    pobrania — jedyna kopia danych żyje w wolumenie Dockera, więc to
-    najprostsza asekuracja przed `docker compose down -v`/awarią dysku."""
-    with tempfile.TemporaryDirectory() as tmp:
-        dest = Path(tmp) / "backup.db"
-        db.backup_to_file(str(dest))
-        data = dest.read_bytes()
+    """Cała baza (wszystkie projekty/faktury/pozycje) jako plik .json do
+    pobrania — jedyna kopia danych żyje w bazie (wolumen Dockera albo
+    Postgres na Vercelu), więc to najprostsza asekuracja przed utratą
+    dysku/bazy. JSON zamiast kopii pliku .db, bo działa identycznie
+    niezależnie od silnika (SQLite lokalnie, Postgres na Vercelu)."""
+    dump = db.export_all()
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    buf = io.BytesIO(json.dumps(dump, ensure_ascii=False, indent=2).encode("utf-8"))
     return StreamingResponse(
-        io.BytesIO(data),
-        media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="kategoryzacja_backup_{stamp}.db"'},
+        buf,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="kategoryzacja_backup_{stamp}.json"'},
     )
 
 

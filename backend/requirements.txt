@@ -5,3 +5,5 @@ beautifulsoup4
 fastapi
 uvicorn[standard]
 python-multipart
+sqlalchemy>=2.0
+psycopg[binary]

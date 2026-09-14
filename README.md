@@ -160,3 +160,42 @@ BACKEND_PORT=9000 VITE_API_URL=http://localhost:9000 docker compose up --build
 Dane projektów żyją w nazwanym wolumenie Dockera (`backend_data`) i przetrwają
 `docker compose down` / restart kontenera — znikają dopiero po
 `docker compose down -v`.
+
+## Deployment na Vercel
+
+Backend i frontend jako jeden projekt Vercel (`vercel.json` w korzeniu:
+frontend budowany statycznie, backend jako funkcja serverless Python pod
+`/api/*` — patrz `api/index.py`).
+
+**Kluczowa różnica względem Dockera: baza danych.** Docker/lokalnie backend
+trzyma dane w pliku SQLite — to nie zadziała na Vercelu, bo system plików
+funkcji serverless jest efemeryczny (znika między wywołaniami). `backend/app/db.py`
+obsługuje oba silniki przez SQLAlchemy; na Vercelu **musisz** ustawić
+`DATABASE_URL` na prawdziwego, trwałego Postgresa:
+
+1. Dodaj do projektu Vercel bazę Postgres (zakładka *Storage* → Vercel
+   Postgres, albo zewnętrzny dostawca jak Neon/Supabase) — Vercel sam doda
+   zmienną `DATABASE_URL` (`postgres://...`) do środowiska; `db.py`
+   normalizuje ją automatycznie do formatu wymaganego przez SQLAlchemy+psycopg.
+2. W **Project Settings → Environment Variables** ustaw `VITE_API_URL` na
+   **pusty string** (nie zostawiaj nieustawionej!) — frontend i backend są
+   pod tym samym originem (routing z `vercel.json`), więc wywołania mają iść
+   względnie (`/api/...`), nie na `localhost:8000`.
+3. Deploy: połącz repo w dashboardzie Vercel (auto-deploy na każdy push) albo
+   `npx vercel deploy --prod` z CLI.
+
+Tabele tworzą się same przy pierwszym request (`db.init_db()` w evencie
+startowym FastAPI).
+
+**Ograniczenia, o których warto wiedzieć** (nie zweryfikowane na żywym
+deployu — przygotowane i przetestowane lokalnie względem Postgresa, ale
+sam `vercel deploy` wymaga Twojego konta):
+- Limit czasu wykonania funkcji serverless (domyślnie krótki na planie
+  Hobby) może być za ciasny dla dużej paczki faktur, zwłaszcza z włączonym
+  „użyj wyszukiwania w internecie” (każde nowe zapytanie do DuckDuckGo to
+  ~0.8s pauzy w kodzie).
+- Limit rozmiaru requestu (multipart upload) na planie Hobby to ok. 4.5 MB
+  — duża paczka PDF-ów na raz może go przekroczyć; wgrywaj mniejszymi
+  partiami, jeśli trafisz na błąd.
+- `GET /api/backup` zwraca teraz zrzut **JSON** (wcześniej: kopia pliku
+  `.db`) — działa identycznie na SQLite i Postgresie.

@@ -1,0 +1,15 @@
+# Vercel CLI uploads the local working directory (git-ignored files
+# included, unlike a git-integration deploy) — keep the same exclusions
+# as .gitignore, plus build/runtime artifacts Vercel never needs to see.
+.venv/
+__pycache__/
+*.pyc
+backend/data/
+backend/tests/
+frontend/node_modules/
+frontend/dist/
+input/*.pdf
+input/*.PDF
+Nowy folder/
+*.xlsx
+.git/
