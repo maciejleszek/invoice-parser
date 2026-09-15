@@ -174,9 +174,18 @@ obsługuje oba silniki przez SQLAlchemy; na Vercelu **musisz** ustawić
 `DATABASE_URL` na prawdziwego, trwałego Postgresa:
 
 1. Dodaj do projektu Vercel bazę Postgres (zakładka *Storage* → Vercel
-   Postgres, albo zewnętrzny dostawca jak Neon/Supabase) — Vercel sam doda
-   zmienną `DATABASE_URL` (`postgres://...`) do środowiska; `db.py`
-   normalizuje ją automatycznie do formatu wymaganego przez SQLAlchemy+psycopg.
+   Postgres, albo zewnętrzny dostawca jak Neon/Supabase) i połącz ją z
+   projektem — Vercel doda connection string do środowiska, ale **nie
+   zawsze pod nazwą `DATABASE_URL`** (bywa `POSTGRES_URL`,
+   `POSTGRES_PRISMA_URL`...). `db.py` sprawdza kilka wariantów nazwy po
+   kolei, więc zwykle zadziała bez ręcznej zmiany — jeśli mimo podłączonej
+   bazy backend dalej krzyczy o brakującej zmiennej, sprawdź w **Settings
+   → Environment Variables**, pod jaką dokładnie nazwą pojawił się
+   connection string (komunikat błędu w logach wypisuje sprawdzane nazwy).
+   Po dodaniu/zmianie zmiennej zawsze zrób nowy **Redeploy** — sama zmiana
+   w Environment Variables nie wpływa na już zbudowane funkcje.
+   `db.py` normalizuje URL automatycznie do formatu wymaganego przez
+   SQLAlchemy+psycopg niezależnie od tego, pod jaką nazwą go znajdzie.
 2. W **Project Settings → Environment Variables** ustaw `VITE_API_URL` na
    **pusty string** (nie zostawiaj nieustawionej!) — frontend i backend są
    pod tym samym originem (routing z `vercel.json`), więc wywołania mają iść
