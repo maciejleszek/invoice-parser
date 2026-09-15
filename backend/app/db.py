@@ -40,21 +40,40 @@ DB_PATH = os.environ.get(
 )
 
 
+# Kolejność ma znaczenie: DATABASE_URL jako jawny, uniwersalny standard
+# pierwszy; reszta to nazwy, pod jakimi integracja Vercel Postgres/Neon
+# faktycznie dokłada connection string do Environment Variables (bywa, że
+# NIE ma tam wcale zwykłego "DATABASE_URL", tylko jeden z poniższych —
+# stąd branie pierwszego, jaki się znajdzie, zamiast twardo jednej nazwy).
+_DATABASE_URL_ENV_CANDIDATES = [
+    "DATABASE_URL",
+    "POSTGRES_URL",
+    "POSTGRES_PRISMA_URL",
+    "POSTGRES_URL_NON_POOLING",
+]
+
+
 def _database_url() -> str:
-    url = os.environ.get("DATABASE_URL")
+    url = next(
+        (os.environ[name] for name in _DATABASE_URL_ENV_CANDIDATES if os.environ.get(name)),
+        None,
+    )
     if not url:
         # Vercel ustawia VERCEL=1 w każdym środowisku uruchomieniowym funkcji
         # (patrz System Environment Variables w ich dokumentacji). Bez
-        # DATABASE_URL próba os.makedirs() na system plików funkcji i tak
-        # wywali się z kryptycznym "Read-only file system" — lepiej od razu
-        # dać jasny komunikat, co skonfigurować, zamiast czekać na to.
+        # DATABASE_URL/POSTGRES_URL próba os.makedirs() na system plików
+        # funkcji i tak wywali się z kryptycznym "Read-only file system" —
+        # lepiej od razu dać jasny komunikat, co skonfigurować.
         if os.environ.get("VERCEL"):
             raise RuntimeError(
-                "Brak zmiennej środowiskowej DATABASE_URL. Na Vercelu system "
-                "plików jest tylko do odczytu, więc SQLite (domyślne lokalnie/"
-                "w Dockerze) tu nie zadziała — dodaj bazę Postgres w zakładce "
-                "Storage projektu i ustaw DATABASE_URL w Environment Variables "
-                "(patrz README, sekcja 'Deployment na Vercel')."
+                "Brak zmiennej środowiskowej z connection stringiem do bazy "
+                f"(sprawdzane nazwy: {', '.join(_DATABASE_URL_ENV_CANDIDATES)}). "
+                "Na Vercelu system plików jest tylko do odczytu, więc SQLite "
+                "(domyślne lokalnie/w Dockerze) tu nie zadziała — dodaj bazę "
+                "Postgres w zakładce Storage projektu, połącz ją z projektem "
+                "i sprawdź w Settings → Environment Variables, pod jaką "
+                "dokładnie nazwą pojawił się connection string (patrz README, "
+                "sekcja 'Deployment na Vercel')."
             )
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         return f"sqlite:///{DB_PATH}"
