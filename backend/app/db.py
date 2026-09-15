@@ -43,6 +43,19 @@ DB_PATH = os.environ.get(
 def _database_url() -> str:
     url = os.environ.get("DATABASE_URL")
     if not url:
+        # Vercel ustawia VERCEL=1 w każdym środowisku uruchomieniowym funkcji
+        # (patrz System Environment Variables w ich dokumentacji). Bez
+        # DATABASE_URL próba os.makedirs() na system plików funkcji i tak
+        # wywali się z kryptycznym "Read-only file system" — lepiej od razu
+        # dać jasny komunikat, co skonfigurować, zamiast czekać na to.
+        if os.environ.get("VERCEL"):
+            raise RuntimeError(
+                "Brak zmiennej środowiskowej DATABASE_URL. Na Vercelu system "
+                "plików jest tylko do odczytu, więc SQLite (domyślne lokalnie/"
+                "w Dockerze) tu nie zadziała — dodaj bazę Postgres w zakładce "
+                "Storage projektu i ustaw DATABASE_URL w Environment Variables "
+                "(patrz README, sekcja 'Deployment na Vercel')."
+            )
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         return f"sqlite:///{DB_PATH}"
     # Neon/Vercel Postgres/Heroku-style URLs zwykle zaczynają się od
