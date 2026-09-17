@@ -87,11 +87,21 @@ function ProjectsPanel({ onOpen }) {
 
   useEffect(reload, []);
 
-  async function handleCreate(name) {
+  async function handleCreate(name, kierownik) {
     setError(null);
     try {
-      const project = await api.createProject(name);
+      const project = await api.createProject(name, kierownik);
       setProjects((prev) => [{ ...project, invoice_count: 0, item_count: 0 }, ...prev]);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleUpdateKierownik(id, kierownik) {
+    setError(null);
+    try {
+      const updated = await api.updateProject(id, { kierownik });
+      setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
     } catch (e) {
       setError(e.message);
     }
@@ -115,6 +125,7 @@ function ProjectsPanel({ onOpen }) {
       onCreate={handleCreate}
       onOpen={onOpen}
       onDelete={handleDelete}
+      onUpdateKierownik={handleUpdateKierownik}
     />
   );
 }

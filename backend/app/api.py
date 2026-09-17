@@ -158,18 +158,40 @@ def _xlsx_response(wb: Workbook, filename: str) -> StreamingResponse:
 
 class ProjectCreate(BaseModel):
     name: str
+    kierownik: str | None = None
 
 
 @app.post("/api/projects")
 def create_project(body: ProjectCreate):
     if not body.name or not body.name.strip():
         raise HTTPException(400, "Nazwa projektu nie może być pusta.")
-    return db.create_project(body.name)
+    return db.create_project(body.name, kierownik=body.kierownik)
 
 
 @app.get("/api/projects")
 def list_projects():
     return db.list_projects()
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    kierownik: str | None = None
+
+
+@app.patch("/api/projects/{project_id}")
+def edit_project(project_id: str, body: ProjectUpdate):
+    """Edycja nazwy/kierownika już istniejącego projektu — przydatne do
+    dopisania kierownika projektom założonym zanim to pole istniało."""
+    fields = body.model_dump(exclude_unset=True)
+    updated = db.update_project(project_id, fields)
+    if not updated:
+        raise HTTPException(404, "Nie znaleziono projektu.")
+    return updated
+
+
+@app.get("/api/kierownicy")
+def list_kierownicy():
+    return db.distinct_kierownicy()
 
 
 @app.get("/api/projects/{project_id}")
@@ -332,11 +354,13 @@ def download_project_workbook(project_id: str, year: int | None = None):
 # ══════════════════════════════════════════════════════════════
 
 @app.get("/api/items")
-def list_items(project_id: str | None = None, year: int | None = None):
+def list_items(project_id: str | None = None, year: int | None = None,
+               kierownik: str | None = None):
     """Pozycje (globalnie albo dla jednego projektu), opcjonalnie
-    filtrowane po roku faktury — używane do wykresu 'koszty per kategoria'
-    i tabeli pozycji zarówno w widoku projektu, jak i w globalnym dashboardzie."""
-    return db.list_items(project_id=project_id, year=year)
+    filtrowane po roku faktury i/lub kierowniku projektu — używane do
+    wykresu 'koszty per kategoria' i tabeli pozycji zarówno w widoku
+    projektu, jak i w globalnym dashboardzie."""
+    return db.list_items(project_id=project_id, year=year, kierownik=kierownik)
 
 
 @app.get("/api/years")

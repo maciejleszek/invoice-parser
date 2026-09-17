@@ -155,7 +155,12 @@ export default function ProjectDetail({ projectId, onBack }) {
         <button className="btn btn--ghost" onClick={onBack}>
           ← Projekty
         </button>
-        <h2 className="view-header__title">{project.name}</h2>
+        <div className="view-header__title">
+          {project.name}
+          {project.kierownik && (
+            <span className="view-header__subtitle">👤 {project.kierownik}</span>
+          )}
+        </div>
         <YearFilter years={project.years} value={year} onChange={setYear} />
       </div>
 

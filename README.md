@@ -81,9 +81,13 @@ Endpointy — szybka analiza (bezstanowa, nic nie jest zapisywane):
 - `GET /api/download/{job_id}` — pobiera wygenerowany plik Excel dla danej sesji.
 
 Endpointy — projekty (trwałe, zapisywane w SQLite pod `backend/data/app.db`):
-- `POST /api/projects` `{name}` — tworzy projekt.
-- `GET /api/projects` — lista projektów (z liczbą faktur/pozycji).
+- `POST /api/projects` `{name, kierownik?}` — tworzy projekt, opcjonalnie
+  z kierownikiem projektu.
+- `GET /api/projects` — lista projektów (z liczbą faktur/pozycji, kierownikiem).
 - `GET /api/projects/{id}` — szczegóły projektu: lista faktur + dostępne lata.
+- `PATCH /api/projects/{id}` `{name?, kierownik?}` — edycja nazwy/kierownika
+  już istniejącego projektu (np. dopisanie kierownika projektom założonym
+  zanim to pole istniało).
 - `DELETE /api/projects/{id}` — usuwa projekt wraz z fakturami.
 - `POST /api/projects/{id}/invoices` — jak `/api/process`, ale zapisuje
   sparsowane faktury do projektu zamiast trzymać je tylko w pamięci.
@@ -99,13 +103,16 @@ Endpointy — projekty (trwałe, zapisywane w SQLite pod `backend/data/app.db`):
   kategorie już zapisanych pozycji (np. po rozszerzeniu słownika słów
   kluczowych) bez usuwania i ponownego wgrywania faktur. Domyślnie omija
   pozycje poprawione ręcznie; `force=true` nadpisuje też te.
-- `GET /api/items?project_id=&year=` — pozycje (globalnie, dla projektu i/lub
-  dla roku) — używane do wykresu kosztów per kategoria i tabeli pozycji.
+- `GET /api/items?project_id=&year=&kierownik=` — pozycje (globalnie, dla
+  projektu i/lub dla roku i/lub dla kierownika projektu) — używane do
+  wykresu kosztów per kategoria i tabeli pozycji.
 - `PATCH /api/items/{item_id}` `{kategoria_klucz}` — ręczna korekta kategorii
   jednej pozycji z GUI (oznaczana jako `manual_override`, więc
   `recategorize` jej domyślnie nie nadpisze).
 - `GET /api/years?project_id=` — lista lat, dla których są dane (globalnie
   albo w obrębie jednego projektu) — zasila filtr roku w GUI.
+- `GET /api/kierownicy` — lista unikalnych kierowników projektów — zasila
+  filtr kierownika w GUI.
 - `GET /api/backup` — cała baza (wszystkie projekty/faktury/pozycje) jako
   plik `.db` do pobrania — asekuracja przed `docker compose down -v`/awarią
   dysku (jedyna kopia danych żyje w wolumenie Dockera).
@@ -123,16 +130,19 @@ Otwórz adres wypisany przez Vite (domyślnie http://localhost:5173). Aplikacja
 ma trzy zakładki:
 - **Szybka analiza** — wgraj PDF-y, zobacz wynik, pobierz Excel; nic nie jest
   zapisywane (dokładnie tak jak wcześniej).
-- **Projekty** — utwórz projekt, wgrywaj do niego faktury w czasie (dane
-  zostają zapisane), przeglądaj jego faktury/pozycje/wykres kategorii i
-  trend miesięczny z filtrem roku, pobierz Excel dla projektu (całość albo
-  za wybrany rok). Faktury można sortować/wyszukiwać, poprawiać ręcznie
-  (przycisk ✎) i usuwać (z potwierdzeniem). Kategorię pozycji można
-  poprawić bezpośrednio z listy rozwijanej w tabeli, a przycisk „Przelicz
-  kategorie ponownie” przelicza wszystkie pozycje projektu na nowo (z
-  poszanowaniem ręcznych poprawek).
+- **Projekty** — utwórz projekt (opcjonalnie z kierownikiem projektu — pole
+  można też dopisać/zmienić później, klikając w jego nazwę na karcie
+  projektu), wgrywaj do niego faktury w czasie (dane zostają zapisane),
+  przeglądaj jego faktury/pozycje/wykres kategorii i trend miesięczny z
+  filtrem roku, pobierz Excel dla projektu (całość albo za wybrany rok).
+  Listę projektów można filtrować po kierowniku. Faktury można
+  sortować/wyszukiwać, poprawiać ręcznie (przycisk ✎) i usuwać (z
+  potwierdzeniem). Kategorię pozycji można poprawić bezpośrednio z listy
+  rozwijanej w tabeli, a przycisk „Przelicz kategorie ponownie” przelicza
+  wszystkie pozycje projektu na nowo (z poszanowaniem ręcznych poprawek).
 - **Podsumowanie roczne** — zestawienie kosztów per kategoria ze wszystkich
-  projektów razem, z filtrem roku (np. wszystko za 2026).
+  projektów razem, z filtrem roku i kierownika projektu (np. wszystko za
+  2026 dla danego kierownika).
 
 Build produkcyjny: `npm run build` (pliki w `frontend/dist/`).
 

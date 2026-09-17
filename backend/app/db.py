@@ -109,6 +109,7 @@ projects = Table(
     "projects", metadata,
     Column("id", String, primary_key=True),
     Column("name", String, nullable=False),
+    Column("kierownik", String),
     Column("created_at", String, nullable=False),
 )
 
@@ -161,6 +162,7 @@ items = Table(
 _COLUMN_MIGRATIONS = [
     ("invoices", "content_hash", "VARCHAR"),
     ("items", "manual_override", "INTEGER NOT NULL DEFAULT 0"),
+    ("projects", "kierownik", "VARCHAR"),
 ]
 
 
@@ -203,26 +205,60 @@ def init_db():
 
 # ── Projekty ─────────────────────────────────────────────────────────
 
-def create_project(name: str) -> dict:
-    project = {"id": uuid.uuid4().hex, "name": name.strip(), "created_at": _now()}
+def create_project(name: str, kierownik: str | None = None) -> dict:
+    kierownik = kierownik.strip() if kierownik and kierownik.strip() else None
+    project = {
+        "id": uuid.uuid4().hex, "name": name.strip(), "kierownik": kierownik,
+        "created_at": _now(),
+    }
     with engine.begin() as conn:
         conn.execute(text(
-            "INSERT INTO projects (id, name, created_at) VALUES (:id, :name, :created_at)"
+            "INSERT INTO projects (id, name, kierownik, created_at) "
+            "VALUES (:id, :name, :kierownik, :created_at)"
         ), project)
     return project
+
+
+_EDITABLE_PROJECT_FIELDS = {"name", "kierownik"}
+
+
+def update_project(project_id: str, fields: dict) -> dict | None:
+    """Edycja nazwy/kierownika już istniejącego projektu (np. dopisanie
+    kierownika do projektu założonego zanim to pole istniało). "name" pusty
+    jest ignorowany (kolumna NOT NULL) — "kierownik" pusty czyści pole."""
+    updates = {k: v for k, v in fields.items() if k in _EDITABLE_PROJECT_FIELDS}
+    if "name" in updates:
+        stripped = (updates["name"] or "").strip()
+        if stripped:
+            updates["name"] = stripped
+        else:
+            del updates["name"]
+    if "kierownik" in updates:
+        updates["kierownik"] = (updates["kierownik"] or "").strip() or None
+    if not updates:
+        return get_project(project_id)
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    with engine.begin() as conn:
+        cur = conn.execute(
+            text(f"UPDATE projects SET {set_clause} WHERE id = :id"),
+            {**updates, "id": project_id},
+        )
+        if cur.rowcount == 0:
+            return None
+    return get_project(project_id)
 
 
 def list_projects() -> list[dict]:
     with engine.begin() as conn:
         rows = conn.execute(text(
             """
-            SELECT p.id, p.name, p.created_at,
+            SELECT p.id, p.name, p.kierownik, p.created_at,
                    COUNT(DISTINCT i.id)  AS invoice_count,
                    COUNT(DISTINCT it.id) AS item_count
             FROM projects p
             LEFT JOIN invoices i ON i.project_id = p.id
             LEFT JOIN items it   ON it.invoice_id = i.id
-            GROUP BY p.id, p.name, p.created_at
+            GROUP BY p.id, p.name, p.kierownik, p.created_at
             ORDER BY p.created_at DESC
             """
         )).fetchall()
@@ -235,6 +271,15 @@ def get_project(project_id: str) -> dict | None:
             text("SELECT * FROM projects WHERE id = :id"), {"id": project_id}
         ).fetchone()
         return _row(row) if row else None
+
+
+def distinct_kierownicy() -> list[str]:
+    with engine.begin() as conn:
+        rows = conn.execute(text(
+            "SELECT DISTINCT kierownik FROM projects "
+            "WHERE kierownik IS NOT NULL AND kierownik != '' ORDER BY kierownik ASC"
+        )).fetchall()
+        return [r[0] for r in rows]
 
 
 def delete_project(project_id: str) -> bool:
@@ -355,7 +400,8 @@ def find_duplicate(project_id: str, content_hash: str | None,
     return None
 
 
-def list_items(project_id: str | None = None, year: int | None = None) -> list[dict]:
+def list_items(project_id: str | None = None, year: int | None = None,
+               kierownik: str | None = None) -> list[dict]:
     """Zwraca pozycje (z dołączonymi polami faktury) w kształcie identycznym
     jak odpowiedź /api/process, żeby frontend mógł użyć tych samych
     komponentów (ItemsTable, CategoryChart) co w trybie szybkiej analizy."""
@@ -367,11 +413,16 @@ def list_items(project_id: str | None = None, year: int | None = None) -> list[d
     if year:
         conditions.append("i.rok = :rok")
         params["rok"] = year
+    if kierownik:
+        conditions.append("p.kierownik = :kierownik")
+        params["kierownik"] = kierownik
     where = (" AND " + " AND ".join(conditions)) if conditions else ""
     sql = f"""
-        SELECT it.*, i.numer_faktury, i.sprzedawca, i.data_faktury, i.waluta
+        SELECT it.*, i.numer_faktury, i.sprzedawca, i.data_faktury, i.waluta,
+               p.kierownik
         FROM items it
         JOIN invoices i ON i.id = it.invoice_id
+        JOIN projects p ON p.id = i.project_id
         WHERE 1=1{where}
         ORDER BY i.uploaded_at DESC, it.lp ASC
     """

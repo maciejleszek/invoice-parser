@@ -131,6 +131,22 @@
   letter-spacing: -0.01em;
 }
 
+.view-header__filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.view-header__subtitle {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 2px;
+  letter-spacing: normal;
+}
+
 .muted-note {
   color: var(--text-muted);
   font-size: 13.5px;
@@ -151,6 +167,15 @@
 .project-create .text-input {
   flex: 1;
   min-width: 0;
+}
+
+.project-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  color: var(--text-muted);
 }
 
 .project-grid {
@@ -188,6 +213,36 @@
   font-size: 16px;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.project-card__kierownik {
+  margin-bottom: 10px;
+}
+
+.project-card__kierownik-label {
+  display: inline-block;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  padding: 2px 4px;
+  margin-left: -4px;
+}
+
+.project-card__kierownik-label:hover {
+  background: var(--surface-alt);
+  color: var(--text-primary);
+}
+
+.project-kierownik-edit {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.project-kierownik-edit .text-input--sm {
+  flex: 1;
+  min-width: 120px;
 }
 
 .project-card__stats {
@@ -367,6 +422,11 @@
 
 .btn:active {
   transform: scale(0.97);
+}
+
+.btn--sm {
+  padding: 5px 12px;
+  font-size: 12.5px;
 }
 
 .btn:disabled {
@@ -629,6 +689,12 @@
 
 .text-input {
   min-width: 220px;
+}
+
+.text-input--sm {
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 12.5px;
 }
 
 .text-input:hover,

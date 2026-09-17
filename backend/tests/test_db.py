@@ -107,6 +107,46 @@ def test_full_project_lifecycle(db):
     assert db.list_projects() == []
 
 
+def test_project_kierownik_crud_and_filtering(db):
+    p1 = db.create_project("Projekt A", kierownik="  Jan Kowalski  ")
+    assert p1["kierownik"] == "Jan Kowalski"  # przycięte białe znaki
+    p2 = db.create_project("Projekt B")  # bez kierownika (opcjonalny)
+    assert p2["kierownik"] is None
+
+    assert db.distinct_kierownicy() == ["Jan Kowalski"]
+
+    # Dopisanie kierownika projektowi, który go jeszcze nie miał
+    updated = db.update_project(p2["id"], {"kierownik": "Anna Nowak"})
+    assert updated["kierownik"] == "Anna Nowak"
+    assert set(db.distinct_kierownicy()) == {"Anna Nowak", "Jan Kowalski"}
+
+    # Czyszczenie kierownika (pusty string -> NULL)
+    db.update_project(p1["id"], {"kierownik": "  "})
+    assert db.get_project(p1["id"])["kierownik"] is None
+
+    # Pusta nazwa jest ignorowana (kolumna NOT NULL) zamiast wywalać błąd
+    unchanged = db.update_project(p2["id"], {"name": "  "})
+    assert unchanged["name"] == "Projekt B"
+
+    header = {
+        "plik": "b.pdf", "typ": "tim", "numer_faktury": "B1", "sprzedawca": "ACME",
+        "data_faktury": "2026-01-01", "termin_platnosci": None, "numer_zamowienia": None,
+        "waluta": "PLN", "razem_netto": 10.0, "razem_brutto": 12.3,
+    }
+    item = {
+        "lp": 1, "opis": "coś", "indeks": None, "pkwiu": None, "ilosc": 1, "jm": "szt",
+        "cena_netto": 10.0, "wartosc_netto": 10.0, "stawka_vat": "23%", "kwota_vat": 2.3,
+        "wartosc_brutto": 12.3, "kategoria_klucz": "inne", "kategoria_nazwa": "Inne",
+        "pewnosc": 10, "zrodlo_dopasowania": "brak", "powod": "brak",
+    }
+    db.save_invoice(p2["id"], header, [item])
+
+    items_for_manager = db.list_items(kierownik="Anna Nowak")
+    assert len(items_for_manager) == 1
+    assert items_for_manager[0]["kierownik"] == "Anna Nowak"
+    assert db.list_items(kierownik="Ktoś Inny") == []
+
+
 def test_delete_project_cascades_to_invoices_and_items(db):
     project = db.create_project("Kaskada")
     db.save_invoice(project["id"], {
@@ -189,6 +229,11 @@ def test_migration_upgrades_pre_existing_database_without_losing_data(db_module)
     invoices = db_module.list_invoices("p1")
     assert invoices[0]["numer_faktury"] == "FV999"
     assert invoices[0]["content_hash"] is None       # nowa kolumna, NULL dla starych wierszy
+
+    project = db_module.get_project("p1")
+    assert project["kierownik"] is None              # nowa kolumna, NULL dla starych wierszy
+    updated = db_module.update_project("p1", {"kierownik": "Nowy Kierownik"})
+    assert updated["kierownik"] == "Nowy Kierownik"
 
     # Bez wyjątku przy ponownym uruchomieniu (kolejny restart appki)
     db_module.init_db()

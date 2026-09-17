@@ -4,6 +4,7 @@ import CategoryChart from "./CategoryChart";
 import TrendChart from "./TrendChart";
 import ItemsTable from "./ItemsTable";
 import YearFilter from "./YearFilter";
+import KierownikFilter from "./KierownikFilter";
 import Loading from "./Loading";
 import { fmtMoney } from "../format";
 import * as api from "../api";
@@ -11,22 +12,25 @@ import * as api from "../api";
 export default function Dashboard() {
   const [years, setYears] = useState([]);
   const [year, setYear] = useState(null);
+  const [kierownicy, setKierownicy] = useState([]);
+  const [kierownik, setKierownik] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     api.listYears().then(setYears).catch((e) => setError(e.message));
+    api.listKierownicy().then(setKierownicy).catch((e) => setError(e.message));
   }, []);
 
   useEffect(() => {
     setLoading(true);
     api
-      .listItems({ year })
+      .listItems({ year, kierownik })
       .then(setItems)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [year]);
+  }, [year, kierownik]);
 
   async function handleCategoryChange(itemId, kategoriaKlucz) {
     setItems((prev) =>
@@ -38,7 +42,7 @@ export default function Dashboard() {
       await api.updateItemCategory(itemId, kategoriaKlucz);
     } catch (e) {
       setError(e.message);
-      api.listItems({ year }).then(setItems);
+      api.listItems({ year, kierownik }).then(setItems);
     }
   }
 
@@ -59,7 +63,10 @@ export default function Dashboard() {
     <div>
       <div className="view-header">
         <h2 className="view-header__title">Podsumowanie roczne — wszystkie projekty</h2>
-        <YearFilter years={years} value={year} onChange={setYear} />
+        <div className="view-header__filters">
+          <YearFilter years={years} value={year} onChange={setYear} />
+          <KierownikFilter kierownicy={kierownicy} value={kierownik} onChange={setKierownik} />
+        </div>
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
@@ -67,8 +74,8 @@ export default function Dashboard() {
 
       {!loading && items.length === 0 && (
         <p className="muted-note">
-          Brak danych{year ? ` za ${year} rok` : ""}. Dodaj faktury do dowolnego projektu, żeby
-          zobaczyć tu zestawienie.
+          Brak danych{year ? ` za ${year} rok` : ""}{kierownik ? ` dla kierownika „${kierownik}”` : ""}.
+          Dodaj faktury do dowolnego projektu, żeby zobaczyć tu zestawienie.
         </p>
       )}
 

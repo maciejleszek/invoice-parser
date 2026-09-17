@@ -41,16 +41,24 @@ export function listProjects() {
   return request("/api/projects");
 }
 
-export function createProject(name) {
+export function createProject(name, kierownik) {
   return request("/api/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, kierownik: kierownik || null }),
   });
 }
 
 export function getProject(id) {
   return request(`/api/projects/${id}`);
+}
+
+export function updateProject(id, fields) {
+  return request(`/api/projects/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
 }
 
 export function deleteProject(id) {
@@ -93,12 +101,16 @@ export function recategorizeProject(projectId, { invoiceId, useWeb, force } = {}
 
 // ── Pozycje / kategorie (globalnie albo per projekt) ────────────────
 
-export function listItems({ projectId, year } = {}) {
-  return request(`/api/items${qs({ project_id: projectId, year })}`);
+export function listItems({ projectId, year, kierownik } = {}) {
+  return request(`/api/items${qs({ project_id: projectId, year, kierownik })}`);
 }
 
 export function listYears({ projectId } = {}) {
   return request(`/api/years${qs({ project_id: projectId })}`);
+}
+
+export function listKierownicy() {
+  return request("/api/kierownicy");
 }
 
 export function updateItemCategory(itemId, kategoriaKlucz) {
