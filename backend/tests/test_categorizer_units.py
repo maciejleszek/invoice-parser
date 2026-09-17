@@ -52,6 +52,16 @@ class TestCleanAmount:
         # zwykły ułamek stawki VAT, nie kwota pieniężna do zliczenia.
         assert clean_amount("23,00 %") is None
 
+    def test_rejects_astronomically_large_glued_together_digits(self):
+        # Bug: gdy pdfplumber zleje kilka komórek/wierszy tabeli w jedną
+        # (np. przy nietypowym layoucie), regex łapiący "ciąg cyfr" łykał
+        # to jako JEDNĄ, absurdalnie wielką kwotę (rzędu 10^30) zamiast
+        # rozpoznać błąd — takie "koszty" potrafiły zdominować sumy
+        # miesięczne na wykresie trendu, mimo że cały projekt wart był
+        # ok. miliona złotych.
+        assert clean_amount("20664414392732124000000000000000,00") is None
+        assert clean_amount("81,18") == 81.18  # normalna kwota nadal działa
+
 
 class TestStripDiacritics:
     def test_removes_polish_diacritics(self):

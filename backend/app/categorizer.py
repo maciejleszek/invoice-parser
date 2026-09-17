@@ -286,6 +286,16 @@ def _wynik(klucz, pewnosc, powod, zrodlo) -> dict:
 # nad pierwszym wierszem pozycji) jako jedną wielką, bez sensu kwotę.
 _MONEY = r"(?:\d{1,3}(?:[ .,]\d{3})*|\d+)[.,]\d{2}"
 
+# Górna granica prawdopodobieństwa dla JEDNEJ kwoty/ilości na fakturze —
+# żadna pozycja ani suma faktury w tej domenie (sprzęt/usługi ppoż.) nie
+# sięga nawet pojedynczych milionów. Powyżej tego to prawie zawsze sklejone
+# przez pomyłkę sąsiednie liczby z komórki tabeli (np. gdy pdfplumber zleje
+# dwa wiersze w jedną komórkę) — regex łapiący "ciąg cyfr" wtedy łyka je
+# jako jedną, astronomiczną wartość zamiast rozpoznać błąd. Lepiej pokazać
+# brak danych niż wymyśloną liczbę, która zawyża sumy/wykresy o dwadzieścia
+# rzędów wielkości.
+_MAX_PLAUSIBLE_AMOUNT = 10_000_000
+
 def clean_amount(text) -> float | None:
     """Obsługuje PL (1.234,56) i EN (1,234.56) i spacje jako separator tysięcy."""
     if text is None: return None
@@ -305,8 +315,11 @@ def clean_amount(text) -> float | None:
         parts = raw.split(','); raw = "".join(parts[:-1])+"."+parts[-1]
     elif raw.count('.') > 1:                     # 1.234.567
         parts = raw.split('.'); raw = "".join(parts[:-1])+"."+parts[-1]
-    try: return float(raw)
-    except: return None
+    try:
+        value = float(raw)
+    except Exception:
+        return None
+    return value if abs(value) <= _MAX_PLAUSIBLE_AMOUNT else None
 
 def find_value(text, *patterns):
     for p in patterns:

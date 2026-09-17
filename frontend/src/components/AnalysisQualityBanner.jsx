@@ -37,8 +37,17 @@ export default function AnalysisQualityBanner({ invoices, items }) {
 
   const lowConf = (items || []).filter((it) => (it.pewnosc ?? 0) < 70).length;
   const veryLowConf = (items || []).filter((it) => (it.pewnosc ?? 0) < 40).length;
+  // Kwota None (nie 0!) na pozycji z opisem — parser albo nic nie znalazł,
+  // albo znalazł coś na tyle absurdalnego (np. sklejone przez pomyłkę
+  // sąsiednie liczby w komórce tabeli), że zostało odrzucone jako
+  // nieprawdopodobne (patrz clean_amount() w backendzie). Pozycja i tak
+  // trafia do wyników, ale bez tej kwoty nie wejdzie do żadnej sumy —
+  // trend/wykres kosztów po prostu ją pominie, więc warto o tym wiedzieć.
+  const missingAmount = (items || []).filter(
+    (it) => it.opis && it.wartosc_brutto == null
+  ).length;
 
-  if (!readingProblems.length && !lowConf) return null;
+  if (!readingProblems.length && !lowConf && !missingAmount) return null;
 
   return (
     <div className="alert alert--warning">
@@ -54,6 +63,13 @@ export default function AnalysisQualityBanner({ invoices, items }) {
             {lowConf} {lowConf === 1 ? "pozycja wymaga" : "pozycji wymaga"} sprawdzenia kategorii
             (pewność &lt;70%){veryLowConf > 0 ? `, w tym ${veryLowConf} bardzo niepewnych (<40%)` : ""}
             {" "}— filtr „Do przeglądu” w tabeli pozycji.
+          </li>
+        )}
+        {missingAmount > 0 && (
+          <li>
+            {missingAmount} {missingAmount === 1 ? "pozycja ma" : "pozycji ma"} nierozpoznaną
+            kwotę (brak w tabeli pozycji zamiast liczby) — nie wliczy się do żadnej sumy/wykresu,
+            popraw ją ręcznie w oryginalnym pliku albo pomiń.
           </li>
         )}
       </ul>
