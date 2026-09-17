@@ -314,6 +314,37 @@ def find_value(text, *patterns):
         if m: return m.group(1).strip()
     return None
 
+
+def _looks_like_real_invoice_number(value: str | None) -> bool:
+    """Prawdziwy numer faktury jest krótki i zawsze ma choć jedną cyfrę.
+    Bez tej walidacji zbyt zachłanny regex fallback (dla nieznanych
+    dostawców, bez dopasowania etykiety 'Numer faktury') potrafił złapać
+    przypadkowe, sąsiadujące słowo (np. urwany fragment adresu "Str",
+    albo sam placeholder "-") jako numer faktury. Dwie zupełnie różne
+    faktury tego samego dostawcy dostawały wtedy ten sam śmieciowy
+    "numer", co dawało fałszywe ostrzeżenia o duplikacie."""
+    if not value:
+        return False
+    value = value.strip()
+    if not value or len(value) > 40 or len(value.split()) > 4:
+        return False
+    return any(ch.isdigit() for ch in value)
+
+
+def _looks_like_real_vendor_name(value: str | None) -> bool:
+    """Prawdziwa nazwa sprzedawcy to kilka słów, opcjonalnie z formą
+    prawną (Sp. z o.o., S.A., GmbH...) — zbyt zachłanny fallback (szukanie
+    dowolnej linii z formą prawną w pierwszych ~600 znakach) potrafił
+    zamiast tego złapać całe zdanie z klauzuli Ogólnych Warunków albo
+    pomylony blok Nabywcy, jeśli tamten fragment wspominał nazwę firmy
+    wcześniej niż właściwy nagłówek 'Sprzedawca'."""
+    if not value:
+        return False
+    value = value.strip()
+    if not value or len(value) > 90 or len(value.split()) > 8:
+        return False
+    return not value.endswith(":")
+
 def _clean_opis(text: str) -> str:
     """Usuwa kody PKWiU oraz zbędne białe znaki z opisu."""
     text = re.sub(r'\b\d{2}\.\d{2}\.\d{2}\.\d\b', ' ', text)
@@ -823,16 +854,19 @@ def _from_header_table(tables: list) -> dict:
 
 def _extract_vendor_name(text: str) -> str:
     m = re.search(r'(?:Sprzedawca|Wystawca|Sprzedaj[aą]cy)\s*[:\n]\s*(.+?)(?:\n|NIP|ul\.|Al\.)', text, re.I)
-    if m and len(m.group(1).strip()) > 3: return m.group(1).strip()
+    if m and _looks_like_real_vendor_name(m.group(1)):
+        return m.group(1).strip()
     # Nazwa sprzedawcy zwykle stoi w nagłówku/stopce dokumentu (pierwsze
     # ~600 znaków) — szukanie w całym tekście łapało czasem dane nabywcy
     # ("Invoice To:" / "Deliver To:" pojawiają się dalej, ale też pasują
-    # do wzorca spółki).
+    # do wzorca spółki). `finditer` (nie tylko pierwszy match) + walidacja
+    # długości, bo pierwsze wystąpienie formy prawnej w tekście bywa
+    # wewnątrz zdania klauzuli prawnej, nie w nazwie nagłówkowej.
     suffix = r'Sp\.\s*z\s*o\.o\.?|S\.A\.|A/S|sp\.j\.|LLC|GmbH|Limited|Ltd\.?|B\.V\.?|Inc\.?'
-    m = re.search(rf'([^\n]{{3,80}}(?:{suffix})[^\n]*)', text[:600], re.I)
-    if m: return m.group(1).strip()
-    m = re.search(rf'([^\n]{{3,80}}(?:{suffix})[^\n]*)', text, re.I)
-    if m: return m.group(1).strip()
+    for search_text in (text[:600], text):
+        for cm in re.finditer(rf'([^\n]{{3,80}}(?:{suffix})[^\n]*)', search_text, re.I):
+            if _looks_like_real_vendor_name(cm.group(1)):
+                return cm.group(1).strip()
     return "Nieznany"
 
 
@@ -959,6 +993,18 @@ def extract_header(text: str, tables: list, vendor: str,
     else:
         wm = re.search(r'\b(EUR|USD|GBP|CHF|PLN)\b', text)
         h["waluta"] = wm.group(1) if wm else "PLN"
+
+    # Walidacja końcowa niezależna od tego, KTÓRA ścieżka wyżej ustawiła
+    # numer_faktury/sprzedawcę (tabela nagłówkowa, wzorzec dla konkretnego
+    # dostawcy, czy zachłanny generyczny fallback) — śmieciowa wartość
+    # (bez cyfry / całe zdanie z klauzuli) jest gorsza niż jej brak: myli
+    # wykrywanie duplikatów (dwie różne faktury z tym samym błędnym
+    # "numerem" wyglądają jak ta sama) i tabele/Excel. Lepiej zostawić
+    # puste pole — GUI i tak ostrzeże o brakujących danych nagłówka.
+    if not _looks_like_real_invoice_number(h.get("numer_faktury")):
+        h["numer_faktury"] = None
+    if not _looks_like_real_vendor_name(h.get("sprzedawca")):
+        h["sprzedawca"] = None
 
     return h
 
