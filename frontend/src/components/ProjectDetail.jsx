@@ -25,6 +25,7 @@ export default function ProjectDetail({ projectId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [skippedDuplicates, setSkippedDuplicates] = useState([]);
+  const [possibleDuplicates, setPossibleDuplicates] = useState([]);
   const [editingInvoice, setEditingInvoice] = useState(null);
 
   const load = useCallback(async () => {
@@ -52,6 +53,7 @@ export default function ProjectDetail({ projectId, onBack }) {
     setUploading(true);
     setError(null);
     setSkippedDuplicates([]);
+    setPossibleDuplicates([]);
     setUploadProgress({ done: 0, total: files.length, current: files[0].name });
     try {
       // Jeden plik na request zamiast całej paczki naraz — pozwala pokazać
@@ -62,6 +64,7 @@ export default function ProjectDetail({ projectId, onBack }) {
         setUploadProgress({ done: i, total: files.length, current: files[i].name });
         lastRes = await api.addInvoicesToProject(projectId, [files[i]], useWeb);
         setSkippedDuplicates((prev) => [...prev, ...(lastRes.skipped_duplicates || [])]);
+        setPossibleDuplicates((prev) => [...prev, ...(lastRes.possible_duplicates || [])]);
       }
       setUploadProgress({ done: files.length, total: files.length, current: null });
       setFiles([]);
@@ -195,6 +198,7 @@ export default function ProjectDetail({ projectId, onBack }) {
           </button>
         </div>
         {error && <div className="alert alert--error">{error}</div>}
+        <DuplicateWarning duplicates={possibleDuplicates} />
         <DuplicateWarning duplicates={skippedDuplicates} skipped />
       </section>
 
@@ -227,6 +231,7 @@ export default function ProjectDetail({ projectId, onBack }) {
               invoices={invoices}
               onDelete={handleDeleteInvoice}
               onEdit={setEditingInvoice}
+              onPreview={(h) => window.open(api.invoiceFileUrl(projectId, h.id), "_blank")}
             />
           </section>
 

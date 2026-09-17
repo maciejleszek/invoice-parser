@@ -84,6 +84,10 @@ export function deleteInvoice(projectId, invoiceId) {
   return request(`/api/projects/${projectId}/invoices/${invoiceId}`, { method: "DELETE" });
 }
 
+export function invoiceFileUrl(projectId, invoiceId) {
+  return `${API_URL}/api/projects/${projectId}/invoices/${invoiceId}/file`;
+}
+
 export function updateInvoice(projectId, invoiceId, fields) {
   return request(`/api/projects/${projectId}/invoices/${invoiceId}`, {
     method: "PATCH",

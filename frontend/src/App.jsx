@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import UploadZone from "./components/UploadZone";
 import StatTile from "./components/StatTile";
 import CategoryChart from "./components/CategoryChart";
@@ -149,6 +149,10 @@ function QuickAnalysis() {
   const [result, setResult] = useState(null); // { job_id, invoices, items, duplicate_warnings }
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [skippedDuplicates, setSkippedDuplicates] = useState([]);
+  // Oryginalne pliki wgrane w tej sesji, po nazwie — do podglądu PDF-u obok
+  // odczytanych danych (nic nie jest zapisywane na serwerze w tym trybie,
+  // więc jedyna kopia pliku żyje tu, w pamięci karty przeglądarki).
+  const filesByPlikRef = useRef(new Map());
 
   const brutoByCurrency = useMemo(() => {
     if (!result) return [];
@@ -174,28 +178,34 @@ function QuickAnalysis() {
     setLoading(true);
     setError(null);
     try {
+      for (const f of files) filesByPlikRef.current.set(f.name, f);
       const res = await api.processQuick(files, useWeb);
       const baseInvoices = result ? result.invoices : [];
       const baseItems = result ? result.items : [];
       const seenPliki = new Set(baseInvoices.map((h) => h.plik));
       const seenKeys = new Set(baseInvoices.map(quickInvoiceKey).filter(Boolean));
 
-      const mergeDuplicates = [];
+      // Ten sam numer faktury u tego samego sprzedawcy NIE jest pewnym
+      // dowodem duplikatu (patrz komentarz przy find_duplicate() w
+      // backendzie) — to tylko ostrzeżenie, faktura i tak trafia do
+      // wyników. Blokujemy scalenie wyłącznie przy dokładnie tej samej
+      // nazwie pliku (bardzo prawdopodobne przypadkowe drugie wgranie).
+      const skippedNow = [];
+      const possibleNow = [];
       const newInvoices = [];
       for (const h of res.invoices) {
-        const key = quickInvoiceKey(h);
         if (seenPliki.has(h.plik)) {
-          mergeDuplicates.push({ plik: h.plik, reason: "identical_file" });
+          skippedNow.push({ plik: h.plik, reason: "identical_file" });
           continue;
         }
+        const key = quickInvoiceKey(h);
         if (key && seenKeys.has(key)) {
-          mergeDuplicates.push({
+          possibleNow.push({
             plik: h.plik,
             numer_faktury: h.numer_faktury,
             sprzedawca: h.sprzedawca,
             reason: "same_invoice_number",
           });
-          continue;
         }
         newInvoices.push(h);
         seenPliki.add(h.plik);
@@ -212,10 +222,10 @@ function QuickAnalysis() {
         job_id: jobId,
         invoices: mergedInvoices,
         items: mergedItems,
-        duplicate_warnings: res.duplicate_warnings || [],
+        duplicate_warnings: [...(res.duplicate_warnings || []), ...possibleNow],
       });
-      if (mergeDuplicates.length) {
-        setSkippedDuplicates((prev) => [...prev, ...mergeDuplicates]);
+      if (skippedNow.length) {
+        setSkippedDuplicates((prev) => [...prev, ...skippedNow]);
       }
       setFiles([]);
     } catch (e) {
@@ -234,6 +244,18 @@ function QuickAnalysis() {
     setResult(null);
     setError(null);
     setSkippedDuplicates([]);
+    filesByPlikRef.current.clear();
+  }
+
+  function handlePreviewInvoice(h) {
+    const file = filesByPlikRef.current.get(h.plik);
+    if (!file) {
+      setError(
+        `Podgląd niedostępny — plik „${h.plik}” nie jest już dostępny w tej sesji (np. po odświeżeniu strony).`
+      );
+      return;
+    }
+    window.open(URL.createObjectURL(file), "_blank");
   }
 
   async function handleSaveInvoiceEdit(fields) {
@@ -264,6 +286,7 @@ function QuickAnalysis() {
     }
     const remainingInvoices = result.invoices.filter((x) => x.plik !== h.plik);
     const remainingItems = result.items.filter((it) => it.plik !== h.plik);
+    filesByPlikRef.current.delete(h.plik);
     if (!remainingInvoices.length) {
       setResult(null);
       return;
@@ -344,6 +367,7 @@ function QuickAnalysis() {
               invoices={result.invoices}
               onEdit={setEditingInvoice}
               onDelete={handleDeleteInvoice}
+              onPreview={handlePreviewInvoice}
             />
           </section>
 

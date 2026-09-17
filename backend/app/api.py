@@ -20,8 +20,9 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
@@ -239,6 +240,7 @@ async def add_invoices_to_project(
         raise HTTPException(400, "Nie przesłano żadnych plików.")
 
     skipped = []
+    possible_duplicates = []
     with tempfile.TemporaryDirectory() as tmp:
         entries = await _save_uploads(tmp, files)
         if not entries:
@@ -260,21 +262,34 @@ async def add_invoices_to_project(
                 project_id, content_hash, header.get("numer_faktury"), header.get("sprzedawca")
             )
             if dup:
-                skipped.append({
+                # Ten sam numer faktury u tego samego sprzedawcy NIE jest
+                # pewnym dowodem duplikatu (dostawcy potrafią zresetować/
+                # powtórzyć numerację, faktura korygująca bywa wgrywana pod
+                # tym samym numerem...) — więc to tylko ostrzeżenie, faktura
+                # i tak zostaje zapisana. Blokujemy zapis wyłącznie, gdy plik
+                # jest bajt w bajt identyczny z już wgranym (content_hash).
+                is_identical_file = dup.get("content_hash") == content_hash
+                entry = {
                     "plik": filename,
                     "numer_faktury": header.get("numer_faktury"),
                     "sprzedawca": header.get("sprzedawca"),
                     "matches_plik": dup.get("plik"),
-                    "reason": "identical_file" if dup.get("content_hash") == content_hash
-                              else "same_invoice_number",
-                })
-                continue
-            db.save_invoice(project_id, header, items, content_hash=content_hash)
+                    "reason": "identical_file" if is_identical_file else "same_invoice_number",
+                }
+                if is_identical_file:
+                    skipped.append(entry)
+                    continue
+                possible_duplicates.append(entry)
+            db.save_invoice(
+                project_id, header, items,
+                content_hash=content_hash, pdf_data=Path(path).read_bytes(),
+            )
 
     return {
         "invoices": db.list_invoices(project_id),
         "items": db.list_items(project_id=project_id),
         "skipped_duplicates": skipped,
+        "possible_duplicates": possible_duplicates,
     }
 
 
@@ -283,6 +298,32 @@ def delete_invoice(project_id: str, invoice_id: str):
     if not db.delete_invoice(project_id, invoice_id):
         raise HTTPException(404, "Nie znaleziono faktury w tym projekcie.")
     return {"ok": True}
+
+
+@app.get("/api/projects/{project_id}/invoices/{invoice_id}/file")
+def get_invoice_file(project_id: str, invoice_id: str):
+    """Oryginalny wgrany PDF tej faktury — do podglądu w przeglądarce obok
+    odczytanych danych, żeby łatwo wyłapać błąd parsera (np. astronomiczną
+    kwotę wynikającą ze złego rozpoznania kolumny) bez szukania pliku na
+    dysku. Starsze faktury (wgrane zanim zaczęliśmy przechowywać PDF-y)
+    nie mają czego pokazać — 404."""
+    found = db.get_invoice_pdf(project_id, invoice_id)
+    if not found:
+        raise HTTPException(404, "Brak zapisanego pliku PDF dla tej faktury.")
+    filename, data = found
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        # Nazwa pliku bywa polskimi znakami (ą, ł...), a nagłówek HTTP musi
+        # dać się zakodować w latin-1 — stąd ASCII-fallback + filename* z
+        # UTF-8 (RFC 6266) zamiast surowej nazwy wprost w Content-Disposition.
+        headers={
+            "Content-Disposition": (
+                f'inline; filename="{filename.encode("ascii", "replace").decode()}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+        },
+    )
 
 
 class InvoiceUpdate(BaseModel):

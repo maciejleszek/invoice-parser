@@ -25,6 +25,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Table,
@@ -130,6 +131,7 @@ invoices = Table(
     Column("razem_brutto", Float),
     Column("content_hash", String),
     Column("uploaded_at", String),
+    Column("pdf_data", LargeBinary),
 )
 
 items = Table(
@@ -157,12 +159,15 @@ items = Table(
 
 # Kolumny dodane po pierwszym wydaniu schematu — metadata.create_all() tworzy
 # tylko brakujące TABELE, nie kolumny w już istniejącej (starszej) tabeli, więc
-# na bazach założonych przed tą zmianą trzeba je dograć ręcznie. Działa
-# identycznie w SQLite (3.35+) i Postgresie — oba wspierają IF NOT EXISTS.
+# na bazach założonych przed tą zmianą trzeba je dograć ręcznie w init_db()
+# poniżej. Typ jako zwykły string działa identycznie w SQLite i Postgresie;
+# gdy dialekty się różnią (np. BLOB vs BYTEA), zamiast stringa podaj dict
+# {"sqlite": "...", "postgresql": "..."}.
 _COLUMN_MIGRATIONS = [
     ("invoices", "content_hash", "VARCHAR"),
     ("items", "manual_override", "INTEGER NOT NULL DEFAULT 0"),
     ("projects", "kierownik", "VARCHAR"),
+    ("invoices", "pdf_data", {"sqlite": "BLOB", "postgresql": "BYTEA"}),
 ]
 
 
@@ -189,6 +194,8 @@ def init_db():
     metadata.create_all(engine)
     with engine.begin() as conn:
         for table, col, coltype in _COLUMN_MIGRATIONS:
+            if isinstance(coltype, dict):
+                coltype = coltype[engine.dialect.name]
             if engine.dialect.name == "postgresql":
                 # Postgres wspiera IF NOT EXISTS wprost — idempotentne bez
                 # połykania nieznanych błędów.
@@ -294,6 +301,14 @@ _INVOICE_FIELDS = [
     "plik", "typ", "numer_faktury", "sprzedawca", "data_faktury",
     "termin_platnosci", "numer_zamowienia", "waluta", "razem_netto", "razem_brutto",
 ]
+# Bez pdf_data (surowe bajty PDF) — SELECT * by je dociągał przy każdym
+# odczycie faktury, choć potrzebne są tylko do podglądu jednego konkretnego
+# pliku (patrz get_invoice_pdf), i wysadziłyby json.dumps() w export_all()/
+# /api/backup (bytes nie są JSON-serializowalne). `has_pdf` mówi frontendowi,
+# czy przycisk podglądu ma sens, bez ciągnięcia samej treści pliku.
+_INVOICE_SELECT_COLUMNS = ["id", "project_id", "rok", "uploaded_at", "content_hash", *_INVOICE_FIELDS]
+_INVOICE_SELECT_SQL = ", ".join(_INVOICE_SELECT_COLUMNS) + ", (pdf_data IS NOT NULL) AS has_pdf"
+
 _ITEM_FIELDS = [
     "lp", "opis", "indeks", "pkwiu", "ilosc", "jm", "cena_netto", "wartosc_netto",
     "stawka_vat", "kwota_vat", "wartosc_brutto", "kategoria_klucz", "kategoria_nazwa",
@@ -302,15 +317,15 @@ _ITEM_FIELDS = [
 
 
 def save_invoice(project_id: str, header: dict, items_: list[dict],
-                  content_hash: str | None = None) -> str:
+                  content_hash: str | None = None, pdf_data: bytes | None = None) -> str:
     invoice_id = uuid.uuid4().hex
     rok = extract_year(header.get("data_faktury"))
     invoice_row = {
         "id": invoice_id, "project_id": project_id, "rok": rok,
-        "uploaded_at": _now(), "content_hash": content_hash,
+        "uploaded_at": _now(), "content_hash": content_hash, "pdf_data": pdf_data,
         **{f: header.get(f) for f in _INVOICE_FIELDS},
     }
-    cols = ["id", "project_id", "rok", "uploaded_at", "content_hash", *_INVOICE_FIELDS]
+    cols = ["id", "project_id", "rok", "uploaded_at", "content_hash", "pdf_data", *_INVOICE_FIELDS]
     with engine.begin() as conn:
         conn.execute(text(
             f"INSERT INTO invoices ({', '.join(cols)}) "
@@ -332,7 +347,8 @@ def save_invoice(project_id: str, header: dict, items_: list[dict],
 def list_invoices(project_id: str) -> list[dict]:
     with engine.begin() as conn:
         rows = conn.execute(text(
-            "SELECT * FROM invoices WHERE project_id = :pid ORDER BY uploaded_at DESC"
+            f"SELECT {_INVOICE_SELECT_SQL} FROM invoices "
+            "WHERE project_id = :pid ORDER BY uploaded_at DESC"
         ), {"pid": project_id}).fetchall()
         return [_row(r) for r in rows]
 
@@ -371,9 +387,22 @@ def update_invoice(project_id: str, invoice_id: str, fields: dict) -> dict | Non
 def get_invoice(project_id: str, invoice_id: str) -> dict | None:
     with engine.begin() as conn:
         row = conn.execute(text(
-            "SELECT * FROM invoices WHERE id = :iid AND project_id = :pid"
+            f"SELECT {_INVOICE_SELECT_SQL} FROM invoices WHERE id = :iid AND project_id = :pid"
         ), {"iid": invoice_id, "pid": project_id}).fetchone()
         return _row(row) if row else None
+
+
+def get_invoice_pdf(project_id: str, invoice_id: str) -> tuple[str, bytes] | None:
+    """Oryginalne bajty wgranego PDF-u tej faktury (do podglądu w GUI) —
+    None jeśli faktura nie istnieje albo została zapisana zanim ta funkcja
+    zaczęła je przechowywać. Zwraca (nazwa_pliku, bajty)."""
+    with engine.begin() as conn:
+        row = conn.execute(text(
+            "SELECT plik, pdf_data FROM invoices WHERE id = :iid AND project_id = :pid"
+        ), {"iid": invoice_id, "pid": project_id}).fetchone()
+        if not row or row[1] is None:
+            return None
+        return row[0], bytes(row[1])
 
 
 def find_duplicate(project_id: str, content_hash: str | None,
@@ -385,13 +414,14 @@ def find_duplicate(project_id: str, content_hash: str | None,
     with engine.begin() as conn:
         if content_hash:
             row = conn.execute(text(
-                "SELECT * FROM invoices WHERE project_id = :pid AND content_hash = :hash"
+                f"SELECT {_INVOICE_SELECT_SQL} FROM invoices "
+                "WHERE project_id = :pid AND content_hash = :hash"
             ), {"pid": project_id, "hash": content_hash}).fetchone()
             if row:
                 return _row(row)
         if numer_faktury and numer_faktury.strip() and sprzedawca and sprzedawca.strip():
             row = conn.execute(text(
-                """SELECT * FROM invoices WHERE project_id = :pid
+                f"""SELECT {_INVOICE_SELECT_SQL} FROM invoices WHERE project_id = :pid
                    AND lower(trim(numer_faktury)) = lower(trim(:numer))
                    AND lower(trim(sprzedawca)) = lower(trim(:sprzedawca))"""
             ), {"pid": project_id, "numer": numer_faktury, "sprzedawca": sprzedawca}).fetchone()
@@ -500,10 +530,13 @@ def export_all() -> dict:
     """Zrzut całej bazy (wszystkie projekty/faktury/pozycje) jako zwykłe
     słowniki/listy — działa identycznie niezależnie od silnika pod spodem
     (SQLite czy Postgres), w przeciwieństwie do kopiowania pliku .db, które
-    ma sens tylko dla SQLite."""
+    ma sens tylko dla SQLite. Bez pdf_data — surowe bajty PDF-ów nie są
+    JSON-serializowalne (i szybko zrobiłyby z tego bardzo ciężki plik)."""
     with engine.begin() as conn:
         projects_ = [_row(r) for r in conn.execute(text("SELECT * FROM projects")).fetchall()]
-        invoices_ = [_row(r) for r in conn.execute(text("SELECT * FROM invoices")).fetchall()]
+        invoices_ = [
+            _row(r) for r in conn.execute(text(f"SELECT {_INVOICE_SELECT_SQL} FROM invoices")).fetchall()
+        ]
         items_ = [_row(r) for r in conn.execute(text("SELECT * FROM items")).fetchall()]
     return {
         "exported_at": _now(),

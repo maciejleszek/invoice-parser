@@ -96,12 +96,19 @@ Endpointy — projekty (trwałe, zapisywane w SQLite pod `backend/data/app.db`):
 - `DELETE /api/projects/{id}` — usuwa projekt wraz z fakturami.
 - `POST /api/projects/{id}/invoices` — jak `/api/process`, ale zapisuje
   sparsowane faktury do projektu zamiast trzymać je tylko w pamięci.
-  Duplikaty (ten sam plik albo ten sam numer faktury u tego samego
-  sprzedawcy) są pomijane i zwracane w `skipped_duplicates`.
+  Pomijany (i zwracany w `skipped_duplicates`) jest tylko bajt-w-bajt ten
+  sam plik co już wgrany. Ten sam numer faktury u tego samego sprzedawcy
+  to za mało, żeby uznać coś za duplikat (dostawcy potrafią powtórzyć
+  numerację) — taka faktura i tak zostaje zapisana, tylko zwrócona
+  dodatkowo w `possible_duplicates` do ewentualnego ręcznego sprawdzenia.
 - `PATCH /api/projects/{id}/invoices/{invoice_id}` — ręczna poprawka
   nagłówka faktury (numer, sprzedawca, daty, kwoty...) — parser czasem
   nie trafi idealnie, to naprawia to bez edycji kodu.
 - `DELETE /api/projects/{id}/invoices/{invoice_id}` — usuwa jedną fakturę.
+- `GET /api/projects/{id}/invoices/{invoice_id}/file` — oryginalny wgrany
+  PDF tej faktury (do podglądu obok odczytanych danych, np. żeby wyłapać
+  błąd parsera). Wymaga, żeby faktura była wgrana już po wprowadzeniu tej
+  funkcji — starsze faktury nie mają zapisanego pliku (404).
 - `GET /api/projects/{id}/download?year=2026` — Excel dla projektu,
   opcjonalnie tylko za dany rok.
 - `POST /api/projects/{id}/recategorize?use_web=&force=` — przelicza
@@ -135,24 +142,29 @@ Otwórz adres wypisany przez Vite (domyślnie http://localhost:5173). Aplikacja
 ma trzy zakładki:
 - **Szybka analiza** — wgraj PDF-y, zobacz wynik, pobierz Excel; nic nie jest
   trwale zapisywane (dane żyją tylko w przeglądarce, w pamięci karty).
-  Fakturę źle odczytaną przez parser można poprawić ręcznie (przycisk ✎)
-  albo usunąć (×) i wgrać ponownie poprawiony/inny plik — kolejne wgrania
-  dokładają się do już wyświetlonych wyników zamiast je zastępować (z
-  ochroną przed przypadkowym wgraniem tego samego pliku/faktury drugi
-  raz). Pobierany Excel zawsze odzwierciedla to, co widać na ekranie,
-  łącznie z ręcznymi poprawkami. Nad wynikami wyświetla się ostrzeżenie,
-  jeśli którejś fakturze brakuje kluczowych danych nagłówka, nie udało
-  się wyciągnąć z niej żadnych pozycji, albo część pozycji ma niską
-  pewność kategoryzacji.
+  Fakturę można podejrzeć w oryginale (przycisk 👁 — otwiera wgrany PDF w
+  nowej karcie, żeby łatwo porównać z odczytanymi danymi), poprawić ręcznie
+  (✎) albo usunąć (×) i wgrać ponownie poprawiony/inny plik — kolejne
+  wgrania dokładają się do już wyświetlonych wyników zamiast je zastępować.
+  Blokowane jest tylko wgranie dokładnie tego samego pliku drugi raz; ten
+  sam numer faktury u tego samego sprzedawcy sam w sobie NIE jest uznawany
+  za duplikat (dostawcy potrafią powtórzyć numerację) — taka faktura zostaje
+  w wynikach, tylko z ostrzeżeniem do ręcznego sprawdzenia. Pobierany Excel
+  zawsze odzwierciedla to, co widać na ekranie, łącznie z ręcznymi
+  poprawkami. Nad wynikami wyświetla się ostrzeżenie, jeśli którejś
+  fakturze brakuje kluczowych danych nagłówka, nie udało się wyciągnąć z
+  niej żadnych pozycji, albo część pozycji ma niską pewność kategoryzacji.
 - **Projekty** — utwórz projekt (opcjonalnie z kierownikiem projektu — pole
   można też dopisać/zmienić później, klikając w jego nazwę na karcie
   projektu), wgrywaj do niego faktury w czasie (dane zostają zapisane),
   przeglądaj jego faktury/pozycje/wykres kategorii i trend miesięczny z
   filtrem roku, pobierz Excel dla projektu (całość albo za wybrany rok).
   Listę projektów można filtrować po kierowniku. Faktury można
-  sortować/wyszukiwać, poprawiać ręcznie (przycisk ✎) i usuwać (z
-  potwierdzeniem) — usuniętą fakturę można wgrać ponownie (np. po
-  poprawieniu pliku) tak samo jak nową. Kategorię pozycji można poprawić
+  sortować/wyszukiwać, podglądać w oryginale (👁), poprawiać ręcznie
+  (przycisk ✎) i usuwać (z potwierdzeniem) — usuniętą fakturę można wgrać
+  ponownie (np. po poprawieniu pliku) tak samo jak nową; wgranie tego
+  samego numeru faktury u tego samego sprzedawcy drugi raz nie jest samo
+  w sobie blokowane, tylko oznaczone ostrzeżeniem. Kategorię pozycji można poprawić
   bezpośrednio z listy rozwijanej w tabeli, a przycisk „Przelicz kategorie
   ponownie” przelicza wszystkie pozycje projektu na nowo (z poszanowaniem
   ręcznych poprawek). Tak samo jak w szybkiej analizie, nad wynikami
@@ -163,6 +175,13 @@ ma trzy zakładki:
   2026 dla danego kierownika).
 
 Build produkcyjny: `npm run build` (pliki w `frontend/dist/`).
+
+> **Uwaga o miejscu na dysku:** od wersji z podglądem faktur (👁) każdy
+> wgrany do projektu PDF jest też zapisywany w całości w bazie (SQLite
+> lokalnie/w Dockerze, Postgres na Vercelu), nie tylko wyciągnięte z niego
+> dane. Przy dużej liczbie/rozmiarze faktur baza urośnie odpowiednio
+> szybciej niż wcześniej — warto to mieć na uwadze przy limicie miejsca
+> na darmowym planie Postgresa (np. Neon/Vercel Postgres).
 
 ## Docker
 

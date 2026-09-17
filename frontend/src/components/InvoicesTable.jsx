@@ -12,7 +12,7 @@ const COLUMNS = [
   { key: "waluta", label: "Waluta" },
 ];
 
-export default function InvoicesTable({ invoices, onDelete, onEdit }) {
+export default function InvoicesTable({ invoices, onDelete, onEdit, onPreview }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState({ key: null, dir: 1 });
 
@@ -74,7 +74,7 @@ export default function InvoicesTable({ invoices, onDelete, onEdit }) {
                   {sort.key === c.key && (sort.dir === 1 ? " ▲" : " ▼")}
                 </th>
               ))}
-              {(onDelete || onEdit) && <th></th>}
+              {(onDelete || onEdit || onPreview) && <th></th>}
             </tr>
           </thead>
           <tbody>
@@ -90,8 +90,18 @@ export default function InvoicesTable({ invoices, onDelete, onEdit }) {
                 <td className="num">{fmtMoney(h.razem_netto)}</td>
                 <td className="num">{fmtMoney(h.razem_brutto)}</td>
                 <td>{h.waluta || "—"}</td>
-                {(onDelete || onEdit) && (
+                {(onDelete || onEdit || onPreview) && (
                   <td className="row-actions">
+                    {onPreview && h.has_pdf !== false && (
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Podgląd oryginalnego PDF-u"
+                        onClick={() => onPreview(h)}
+                      >
+                        👁
+                      </button>
+                    )}
                     {onEdit && (
                       <button
                         type="button"

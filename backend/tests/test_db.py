@@ -147,6 +147,36 @@ def test_project_kierownik_crud_and_filtering(db):
     assert db.list_items(kierownik="Ktoś Inny") == []
 
 
+def test_invoice_pdf_storage_and_retrieval(db):
+    """Podgląd PDF-u w GUI (przycisk 👁) opiera się na tym, że oryginalne
+    bajty pliku są zapisywane obok odczytanych danych — i że NIE wyciekają
+    do zwykłych zapytań (list_invoices/get_invoice/export_all), bo bytes
+    wysadziłby json.dumps() w /api/backup."""
+    project = db.create_project("Z podglądem")
+    header = {
+        "plik": "faktura.pdf", "typ": "tim", "numer_faktury": "FV1", "sprzedawca": "ACME",
+        "data_faktury": "2026-01-01", "termin_platnosci": None, "numer_zamowienia": None,
+        "waluta": "PLN", "razem_netto": 1.0, "razem_brutto": 1.23,
+    }
+    invoice_id = db.save_invoice(project["id"], header, [], pdf_data=b"%PDF-1.4 fake bytes")
+
+    found = db.get_invoice_pdf(project["id"], invoice_id)
+    assert found == ("faktura.pdf", b"%PDF-1.4 fake bytes")
+
+    # Brak w zwykłych odczytach — tylko flaga has_pdf, nie same bajty.
+    invoices = db.list_invoices(project["id"])
+    assert invoices[0]["has_pdf"]
+    assert "pdf_data" not in invoices[0]
+    assert "pdf_data" not in db.get_invoice(project["id"], invoice_id)
+    assert "pdf_data" not in db.export_all()["invoices"][0]
+
+    # Faktura bez zapisanego PDF-u (np. wgrana zanim ta funkcja istniała)
+    invoice_id2 = db.save_invoice(project["id"], {**header, "plik": "bez_pdf.pdf"}, [])
+    assert db.get_invoice_pdf(project["id"], invoice_id2) is None
+    invoices = db.list_invoices(project["id"])
+    assert not next(i for i in invoices if i["plik"] == "bez_pdf.pdf")["has_pdf"]
+
+
 def test_delete_project_cascades_to_invoices_and_items(db):
     project = db.create_project("Kaskada")
     db.save_invoice(project["id"], {
@@ -234,6 +264,9 @@ def test_migration_upgrades_pre_existing_database_without_losing_data(db_module)
     assert project["kierownik"] is None              # nowa kolumna, NULL dla starych wierszy
     updated = db_module.update_project("p1", {"kierownik": "Nowy Kierownik"})
     assert updated["kierownik"] == "Nowy Kierownik"
+
+    assert not invoices[0]["has_pdf"]                # nowa kolumna (pdf_data), NULL -> has_pdf falsy
+    assert db_module.get_invoice_pdf("p1", "i1") is None
 
     # Bez wyjątku przy ponownym uruchomieniu (kolejny restart appki)
     db_module.init_db()
