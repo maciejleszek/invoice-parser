@@ -35,6 +35,14 @@ export function downloadQuickUrl(jobId) {
   return `${API_URL}/api/download/${jobId}`;
 }
 
+export function rebuildQuickWorkbook(invoices, items) {
+  return request("/api/process/rebuild", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ invoices, items }),
+  });
+}
+
 // ── Projekty ─────────────────────────────────────────────────────────
 
 export function listProjects() {

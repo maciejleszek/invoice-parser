@@ -1247,6 +1247,7 @@ def categorize_files(pdf_files: list[str], use_web: bool = True,
                 f"{kat['kategoria_nazwa']:<32} ({kat['pewnosc']}% | {kat['zrodlo_dopasowania']})")
             all_items.append({
                 **item,
+                "plik":               header.get("plik"),
                 "numer_faktury":      header.get("numer_faktury"),
                 "sprzedawca":         header.get("sprzedawca"),
                 "data_faktury":       header.get("data_faktury"),

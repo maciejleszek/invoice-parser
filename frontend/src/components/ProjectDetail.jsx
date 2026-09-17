@@ -7,6 +7,7 @@ import InvoicesTable from "./InvoicesTable";
 import ItemsTable from "./ItemsTable";
 import YearFilter from "./YearFilter";
 import DuplicateWarning from "./DuplicateWarning";
+import AnalysisQualityBanner from "./AnalysisQualityBanner";
 import InvoiceEditModal from "./InvoiceEditModal";
 import Loading from "./Loading";
 import { fmtMoney } from "../format";
@@ -205,6 +206,8 @@ export default function ProjectDetail({ projectId, onBack }) {
         </p>
       ) : (
         <>
+          <AnalysisQualityBanner invoices={invoices} items={items} />
+
           <section className="stats-row">
             <StatTile label="Faktury" value={invoices.length} />
             <StatTile label="Pozycje" value={items.length} />

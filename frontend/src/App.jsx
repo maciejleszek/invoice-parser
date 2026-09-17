@@ -9,6 +9,8 @@ import ProjectDetail from "./components/ProjectDetail";
 import Dashboard from "./components/Dashboard";
 import ThemeToggle from "./components/ThemeToggle";
 import DuplicateWarning from "./components/DuplicateWarning";
+import AnalysisQualityBanner from "./components/AnalysisQualityBanner";
+import InvoiceEditModal from "./components/InvoiceEditModal";
 import { fmtMoney } from "./format";
 import * as api from "./api";
 import "./App.css";
@@ -130,12 +132,23 @@ function ProjectsPanel({ onOpen }) {
   );
 }
 
+// Klucz (numer faktury, sprzedawca) do wykrywania duplikatów po stronie
+// klienta — ta sama logika co _invoice_key() w backendzie, potrzebna tu
+// osobno, bo scalanie wyników kolejnych partii plików dzieje się w GUI.
+function quickInvoiceKey(h) {
+  const numer = (h.numer_faktury || "").trim().toLowerCase();
+  const sprzedawca = (h.sprzedawca || "").trim().toLowerCase();
+  return numer && sprzedawca ? `${numer}|${sprzedawca}` : null;
+}
+
 function QuickAnalysis() {
   const [files, setFiles] = useState([]);
   const [useWeb, setUseWeb] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [result, setResult] = useState(null); // { job_id, invoices, items }
+  const [result, setResult] = useState(null); // { job_id, invoices, items, duplicate_warnings }
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [skippedDuplicates, setSkippedDuplicates] = useState([]);
 
   const brutoByCurrency = useMemo(() => {
     if (!result) return [];
@@ -147,13 +160,64 @@ function QuickAnalysis() {
     return Array.from(agg.entries());
   }, [result]);
 
+  // Excel do pobrania jest budowany po stronie backendu z aktualnego stanu
+  // (invoices/items) za każdym razem, gdy coś się zmienia (nowa paczka,
+  // ręczna poprawka, usunięcie faktury) — żeby plik zawsze odzwierciedlał
+  // to, co widać na ekranie, a nie tylko pierwotny (błędny) odczyt.
+  async function syncJob(invoices, items) {
+    const { job_id } = await api.rebuildQuickWorkbook(invoices, items);
+    return job_id;
+  }
+
   async function handleProcess() {
     if (!files.length) return;
     setLoading(true);
     setError(null);
-    setResult(null);
     try {
-      setResult(await api.processQuick(files, useWeb));
+      const res = await api.processQuick(files, useWeb);
+      const baseInvoices = result ? result.invoices : [];
+      const baseItems = result ? result.items : [];
+      const seenPliki = new Set(baseInvoices.map((h) => h.plik));
+      const seenKeys = new Set(baseInvoices.map(quickInvoiceKey).filter(Boolean));
+
+      const mergeDuplicates = [];
+      const newInvoices = [];
+      for (const h of res.invoices) {
+        const key = quickInvoiceKey(h);
+        if (seenPliki.has(h.plik)) {
+          mergeDuplicates.push({ plik: h.plik, reason: "identical_file" });
+          continue;
+        }
+        if (key && seenKeys.has(key)) {
+          mergeDuplicates.push({
+            plik: h.plik,
+            numer_faktury: h.numer_faktury,
+            sprzedawca: h.sprzedawca,
+            reason: "same_invoice_number",
+          });
+          continue;
+        }
+        newInvoices.push(h);
+        seenPliki.add(h.plik);
+        if (key) seenKeys.add(key);
+      }
+      const keptPliki = new Set(newInvoices.map((h) => h.plik));
+      const newItems = res.items.filter((it) => keptPliki.has(it.plik));
+
+      const mergedInvoices = [...baseInvoices, ...newInvoices];
+      const mergedItems = [...baseItems, ...newItems];
+      const jobId = await syncJob(mergedInvoices, mergedItems);
+
+      setResult({
+        job_id: jobId,
+        invoices: mergedInvoices,
+        items: mergedItems,
+        duplicate_warnings: res.duplicate_warnings || [],
+      });
+      if (mergeDuplicates.length) {
+        setSkippedDuplicates((prev) => [...prev, ...mergeDuplicates]);
+      }
+      setFiles([]);
     } catch (e) {
       setError(
         e.message === "Failed to fetch"
@@ -169,6 +233,47 @@ function QuickAnalysis() {
     setFiles([]);
     setResult(null);
     setError(null);
+    setSkippedDuplicates([]);
+  }
+
+  async function handleSaveInvoiceEdit(fields) {
+    const old = editingInvoice;
+    const updatedInvoices = result.invoices.map((h) =>
+      h.plik === old.plik ? { ...h, ...fields } : h
+    );
+    const cascade = {
+      numer_faktury: fields.numer_faktury,
+      sprzedawca: fields.sprzedawca,
+      data_faktury: fields.data_faktury,
+      waluta: fields.waluta,
+    };
+    const updatedItems = result.items.map((it) =>
+      it.plik === old.plik ? { ...it, ...cascade } : it
+    );
+    const jobId = await syncJob(updatedInvoices, updatedItems);
+    setResult({ ...result, job_id: jobId, invoices: updatedInvoices, items: updatedItems });
+  }
+
+  async function handleDeleteInvoice(h) {
+    if (
+      !window.confirm(
+        `Usunąć fakturę „${h.plik}” (${h.numer_faktury || "?"}) z wyników? Będziesz mógł wgrać poprawiony plik ponownie.`
+      )
+    ) {
+      return;
+    }
+    const remainingInvoices = result.invoices.filter((x) => x.plik !== h.plik);
+    const remainingItems = result.items.filter((it) => it.plik !== h.plik);
+    if (!remainingInvoices.length) {
+      setResult(null);
+      return;
+    }
+    try {
+      const jobId = await syncJob(remainingInvoices, remainingItems);
+      setResult({ ...result, job_id: jobId, invoices: remainingInvoices, items: remainingItems });
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   return (
@@ -202,6 +307,8 @@ function QuickAnalysis() {
                 <>
                   <span className="spinner" /> Przetwarzanie…
                 </>
+              ) : result ? (
+                `Dodaj do wyników (${files.length})`
               ) : (
                 `Kategoryzuj (${files.length})`
               )}
@@ -211,10 +318,13 @@ function QuickAnalysis() {
 
         {error && <div className="alert alert--error">{error}</div>}
         {result && <DuplicateWarning duplicates={result.duplicate_warnings} />}
+        <DuplicateWarning duplicates={skippedDuplicates} skipped />
       </section>
 
       {result && (
         <>
+          <AnalysisQualityBanner invoices={result.invoices} items={result.items} />
+
           <section className="stats-row">
             <StatTile label="Faktury" value={result.invoices.length} />
             <StatTile label="Pozycje" value={result.items.length} />
@@ -230,13 +340,25 @@ function QuickAnalysis() {
 
           <section className="content-grid">
             <CategoryChart items={result.items} />
-            <InvoicesTable invoices={result.invoices} />
+            <InvoicesTable
+              invoices={result.invoices}
+              onEdit={setEditingInvoice}
+              onDelete={handleDeleteInvoice}
+            />
           </section>
 
           <section>
             <ItemsTable items={result.items} />
           </section>
         </>
+      )}
+
+      {editingInvoice && (
+        <InvoiceEditModal
+          invoice={editingInvoice}
+          onClose={() => setEditingInvoice(null)}
+          onSave={handleSaveInvoiceEdit}
+        />
       )}
     </>
   );

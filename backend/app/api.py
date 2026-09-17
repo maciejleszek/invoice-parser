@@ -141,6 +141,22 @@ async def download_workbook(job_id: str):
     return _xlsx_response(wb, f"kategoryzacja_{job_id[:8]}.xlsx")
 
 
+class RebuildRequest(BaseModel):
+    invoices: list[dict]
+    items: list[dict]
+
+
+@app.post("/api/process/rebuild")
+def rebuild_workbook(body: RebuildRequest):
+    """Odbudowuje plik Excel z nagłówków/pozycji szybkiej analizy —  bez
+    ponownego parsowania PDF-ów. Wywoływane z GUI po ręcznej poprawce
+    faktury albo usunięciu błędnie odczytanej pozycji z wyników, żeby
+    pobrany plik odzwierciedlał to, co widać na ekranie."""
+    job_id = uuid.uuid4().hex
+    _JOBS[job_id] = build_workbook(body.invoices, body.items)
+    return {"job_id": job_id}
+
+
 def _xlsx_response(wb: Workbook, filename: str) -> StreamingResponse:
     buf = io.BytesIO()
     wb.save(buf)

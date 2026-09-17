@@ -418,7 +418,7 @@ def list_items(project_id: str | None = None, year: int | None = None,
         params["kierownik"] = kierownik
     where = (" AND " + " AND ".join(conditions)) if conditions else ""
     sql = f"""
-        SELECT it.*, i.numer_faktury, i.sprzedawca, i.data_faktury, i.waluta,
+        SELECT it.*, i.plik, i.numer_faktury, i.sprzedawca, i.data_faktury, i.waluta,
                p.kierownik
         FROM items it
         JOIN invoices i ON i.id = it.invoice_id

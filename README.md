@@ -79,6 +79,11 @@ Endpointy — szybka analiza (bezstanowa, nic nie jest zapisywane):
   `use_web` (`true`/`false`). Zwraca JSON z fakturami i skategoryzowanymi
   pozycjami oraz `job_id`.
 - `GET /api/download/{job_id}` — pobiera wygenerowany plik Excel dla danej sesji.
+- `POST /api/process/rebuild` `{invoices, items}` — odbudowuje plik Excel
+  (nowy `job_id`) z podanych nagłówków/pozycji bez ponownego parsowania
+  PDF-ów. Używane przez GUI po ręcznej poprawce faktury albo usunięciu
+  błędnie odczytanej pozycji z wyników szybkiej analizy, żeby pobrany
+  plik odzwierciedlał to, co widać na ekranie.
 
 Endpointy — projekty (trwałe, zapisywane w SQLite pod `backend/data/app.db`):
 - `POST /api/projects` `{name, kierownik?}` — tworzy projekt, opcjonalnie
@@ -129,7 +134,16 @@ npm run dev
 Otwórz adres wypisany przez Vite (domyślnie http://localhost:5173). Aplikacja
 ma trzy zakładki:
 - **Szybka analiza** — wgraj PDF-y, zobacz wynik, pobierz Excel; nic nie jest
-  zapisywane (dokładnie tak jak wcześniej).
+  trwale zapisywane (dane żyją tylko w przeglądarce, w pamięci karty).
+  Fakturę źle odczytaną przez parser można poprawić ręcznie (przycisk ✎)
+  albo usunąć (×) i wgrać ponownie poprawiony/inny plik — kolejne wgrania
+  dokładają się do już wyświetlonych wyników zamiast je zastępować (z
+  ochroną przed przypadkowym wgraniem tego samego pliku/faktury drugi
+  raz). Pobierany Excel zawsze odzwierciedla to, co widać na ekranie,
+  łącznie z ręcznymi poprawkami. Nad wynikami wyświetla się ostrzeżenie,
+  jeśli którejś fakturze brakuje kluczowych danych nagłówka, nie udało
+  się wyciągnąć z niej żadnych pozycji, albo część pozycji ma niską
+  pewność kategoryzacji.
 - **Projekty** — utwórz projekt (opcjonalnie z kierownikiem projektu — pole
   można też dopisać/zmienić później, klikając w jego nazwę na karcie
   projektu), wgrywaj do niego faktury w czasie (dane zostają zapisane),
@@ -137,9 +151,13 @@ ma trzy zakładki:
   filtrem roku, pobierz Excel dla projektu (całość albo za wybrany rok).
   Listę projektów można filtrować po kierowniku. Faktury można
   sortować/wyszukiwać, poprawiać ręcznie (przycisk ✎) i usuwać (z
-  potwierdzeniem). Kategorię pozycji można poprawić bezpośrednio z listy
-  rozwijanej w tabeli, a przycisk „Przelicz kategorie ponownie” przelicza
-  wszystkie pozycje projektu na nowo (z poszanowaniem ręcznych poprawek).
+  potwierdzeniem) — usuniętą fakturę można wgrać ponownie (np. po
+  poprawieniu pliku) tak samo jak nową. Kategorię pozycji można poprawić
+  bezpośrednio z listy rozwijanej w tabeli, a przycisk „Przelicz kategorie
+  ponownie” przelicza wszystkie pozycje projektu na nowo (z poszanowaniem
+  ręcznych poprawek). Tak samo jak w szybkiej analizie, nad wynikami
+  wyświetla się ostrzeżenie o niekompletnie odczytanych fakturach i
+  pozycjach o niskiej pewności kategoryzacji.
 - **Podsumowanie roczne** — zestawienie kosztów per kategoria ze wszystkich
   projektów razem, z filtrem roku i kierownika projektu (np. wszystko za
   2026 dla danego kierownika).
