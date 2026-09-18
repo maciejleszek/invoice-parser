@@ -15,6 +15,7 @@ from app.categorizer import (
     detect_vendor,
     extract_header,
     find_value,
+    kategoryzuj,
     parse_text_mercor,
 )
 from app.db import extract_year
@@ -221,3 +222,28 @@ class TestExtractHeaderRejectsGarbageFields:
             "Sprzedawca:\nSikla Polska Sp. z o.o.\nNIP 123\n"
         )
         assert _extract_vendor_name(text) == "Sikla Polska Sp. z o.o."
+
+
+class TestTransportCategoryDoesNotOvermatch:
+    """Bug: słowo kluczowe "dostaw" (substring) łapało też "dostawca"/
+    "dostawcy" (SPRZEDAWCA faktury — zupełnie inne pojęcie niż koszt
+    przesyłki), więc dowolna pozycja ze słowem "dostawca" gdziekolwiek w
+    opisie/indeksie trafiała do kategorii transport, sztucznie zawyżając
+    jej sumę kosztów w projekcie."""
+
+    def test_delivery_charge_is_still_transport(self):
+        result = kategoryzuj("Koszt dostawy towaru", use_web=False)
+        assert result["kategoria_klucz"] == "transport"
+
+    def test_supplier_mention_is_not_transport(self):
+        result = kategoryzuj("Zestaw wg specyfikacji dostawcy XYZ", use_web=False)
+        assert result["kategoria_klucz"] != "transport"
+
+    def test_bare_carriage_is_transport(self):
+        result = kategoryzuj("Carriage", use_web=False)
+        assert result["kategoria_klucz"] == "transport"
+
+    def test_carriage_bolt_is_not_transport(self):
+        # "carriage bolt" to śruba (złącze mechaniczne), nie koszt przesyłki.
+        result = kategoryzuj("Carriage bolt M8x50", use_web=False)
+        assert result["kategoria_klucz"] != "transport"

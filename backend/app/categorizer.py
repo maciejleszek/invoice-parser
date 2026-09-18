@@ -123,9 +123,16 @@ KEYWORD_RULES: dict[str, list[str]] = {
         "armatura gazowa", "instalacja gazowa",
     ],
     "transport": [
-        "spedycja", "transport", "dostaw", "przewóz", "kurier",
+        "spedycja", "transport", "przewóz", "kurier",
+        # "dostawa/dostawy/dostawie/dostawę" (przesyłka), NIE "dostaw" —
+        # ten ostatni jako substring łapał też "dostawca/dostawcy"
+        # (SPRZEDAWCA/wystawca faktury, zupełnie inne pojęcie niż koszt
+        # przesyłki), co dawało fałszywie wysokie kwoty w kategorii
+        # transport na fakturach, gdzie słowo "dostawca" pojawiało się
+        # gdziekolwiek w opisie/indeksie pozycji.
+        "dostawa", "dostawy", "dostawie", "dostawę",
         "przesyłka", "logistyka",
-        "shipping", "freight", "handling charge", "carriage",
+        "shipping", "freight", "handling charge",
     ],
     "teletechnika": [
         "router", "kabel sieciowy", "patchcord", "patch panel",
@@ -254,6 +261,12 @@ def _cat_heuristic(opis, indeks="") -> tuple[str, int, str]:
     if re.search(r'\b(s5\d{4}|a5q\d{8}|fd[cchi])', t): return "sygnalizacja_pozaru", 70, "indeks Siemens SAP"
     if re.search(r'\bm22-',   t): return "elektryka",    65, "seria M22"
     if re.search(r'spedycja|dostawa|transport|kurier|shipping|freight|handling',t): return "transport", 90, "transport"
+    # "carriage" osobno, z wykluczeniem — dwuznaczne między "koszt
+    # przesyłki" (np. cała pozycja opisana po prostu "Carriage") a
+    # angielskim złączem "carriage bolt/screw/nut" (śruba/wkręt/nakrętka),
+    # które nie ma nic wspólnego z transportem.
+    if re.search(r'\bcarriage\b', t) and not re.search(r'carriage\s*(bolt|screw|nut)', t):
+        return "transport", 90, "carriage"
     if re.search(r'obudowa.*(ip\d+|metal)|(ip\d{2}).*(obudow|szaf)', t): return "obudowy_szafy", 75, "obudowa+IP"
     if re.search(r'\b(kabel|przewód|cable|wire|nym|lsoh)\b', t): return "elektryka",    70, "kabel"
     if re.search(r'\b(valve|zawór|armatura|hose|rura|zawor)\b', t): return "hydraulika",  65, "armatura"
