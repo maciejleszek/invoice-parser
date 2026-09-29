@@ -247,3 +247,28 @@ class TestTransportCategoryDoesNotOvermatch:
         # "carriage bolt" to śruba (złącze mechaniczne), nie koszt przesyłki.
         result = kategoryzuj("Carriage bolt M8x50", use_web=False)
         assert result["kategoria_klucz"] != "transport"
+
+
+class TestVendorExtractionRejectsBuyerBleed:
+    """Bug znaleziony na żywym deployu (projekt 601, ~27/103 faktur): ta
+    appka jest wewnętrznym narzędziem DEKK Fire Solutions do przetwarzania
+    faktur OD dostawców DO DEKK, więc "DEKK Fire Solutions" nigdy nie
+    powinno wyjść jako sprzedawca — a jednak wychodziło, gdy ekstrakcja
+    pomyliła blok Sprzedawcy z blokiem Nabywcy (typowe przy fakturach z
+    układem dwukolumnowym)."""
+
+    @pytest.mark.parametrize("value", [
+        "DEKKFIRESOLUTIONSP.ZO.O. Idnabywcy: 1231283458",
+        "PRZEDSIĘBIORSTWO PRODUKCYJNO- DEKK FIRE SOLUTIONS Sp. z o.o.",
+        "EWMET Ewa Małecka DEKK FIRE SOLUTIONS SP.Z O.O.",
+        "DEKK FIRE SOLUTIONS Sp. z o.o.",
+    ])
+    def test_rejects_buyer_name_in_any_form(self, value):
+        assert _looks_like_real_vendor_name(value) is False
+
+    def test_still_accepts_a_real_vendor_mentioning_dekk_as_customer_elsewhere(self):
+        # Kontrola negatywna: samo słowo w INNYM miejscu tekstu (nie w
+        # samej wartości sprzedawcy) nie jest tu sprawdzane — to test na
+        # to, że walidacja nie jest przesadnie szeroka wobec prawdziwych
+        # nazw firm bez "dekk" w środku.
+        assert _looks_like_real_vendor_name("TASTA ARMATURA Sp. z o.o.") is True

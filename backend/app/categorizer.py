@@ -369,7 +369,21 @@ def _looks_like_real_vendor_name(value: str | None) -> bool:
     value = value.strip()
     if not value or len(value) > 90 or len(value.split()) > 8:
         return False
-    return not value.endswith(":")
+    if value.endswith(":"):
+        return False
+    # Ta appka jest wewnętrznym narzędziem DEKK Fire Solutions do
+    # kategoryzowania faktur OD dostawców DO DEKK — więc "DEKK Fire
+    # Solutions" nigdy nie jest prawdziwym sprzedawcą, zawsze nabywcą.
+    # W tym polu pojawia się wyłącznie wtedy, gdy ekstrakcja pomyliła
+    # blok Sprzedawcy z blokiem Nabywcy (częste przy fakturach z układem
+    # dwukolumnowym, gdzie oba bloki trafiają w jedną "linię" tekstu
+    # wyekstrahowanego z PDF-u) — realny bug znaleziony na ~1/4 faktur
+    # jednego z projektów. Dopasowanie bez spacji/interpunkcji, bo bywa
+    # sklejone w jedno słowo ("DEKKFIRESOLUTIONSP.ZO.O.").
+    compact = re.sub(r'[^a-z0-9]', '', value.lower())
+    if 'dekkfiresolutions' in compact:
+        return False
+    return True
 
 def _clean_opis(text: str) -> str:
     """Usuwa kody PKWiU oraz zbędne białe znaki z opisu."""
