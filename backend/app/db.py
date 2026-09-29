@@ -487,6 +487,30 @@ def set_item_category(item_id: int, kategoria_klucz: str, kategoria_nazwa: str) 
         return cur.rowcount > 0
 
 
+_EDITABLE_ITEM_FIELDS = {
+    "opis", "indeks", "pkwiu", "ilosc", "jm", "cena_netto",
+    "wartosc_netto", "stawka_vat", "kwota_vat", "wartosc_brutto",
+}
+
+
+def update_item(item_id: int, fields: dict) -> bool:
+    """Ręczna poprawka pozycji faktury (błędnie odczytany opis, ilość,
+    cena...) z GUI — parser czasem nie trafi idealnie w tabelę pozycji.
+    Osobno od set_item_category(), bo poprawka np. opisu nie powinna
+    dotykać manual_override (to wyłącznie o ochronie kategorii przed
+    ponownym przeliczeniem)."""
+    updates = {k: v for k, v in fields.items() if k in _EDITABLE_ITEM_FIELDS}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    with engine.begin() as conn:
+        cur = conn.execute(
+            text(f"UPDATE items SET {set_clause} WHERE id = :id"),
+            {**updates, "id": item_id},
+        )
+        return cur.rowcount > 0
+
+
 def items_for_recategorize(project_id: str, invoice_id: str | None = None,
                             force: bool = False) -> list[dict]:
     """Pozycje kwalifikujące się do ponownego przeliczenia kategorii —

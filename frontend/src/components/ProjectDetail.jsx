@@ -9,6 +9,7 @@ import YearFilter from "./YearFilter";
 import DuplicateWarning from "./DuplicateWarning";
 import AnalysisQualityBanner from "./AnalysisQualityBanner";
 import InvoiceEditModal from "./InvoiceEditModal";
+import ItemEditModal from "./ItemEditModal";
 import Loading from "./Loading";
 import { fmtMoney } from "../format";
 import * as api from "../api";
@@ -27,6 +28,7 @@ export default function ProjectDetail({ projectId, onBack }) {
   const [skippedDuplicates, setSkippedDuplicates] = useState([]);
   const [possibleDuplicates, setPossibleDuplicates] = useState([]);
   const [editingInvoice, setEditingInvoice] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -110,6 +112,11 @@ export default function ProjectDetail({ projectId, onBack }) {
       setError(e.message);
       await load(); // cofnij optymistyczną zmianę, jeśli zapis się nie udał
     }
+  }
+
+  async function handleSaveItemEdit(fields) {
+    await api.updateItem(editingItem.id, fields);
+    await load();
   }
 
   async function handleRecategorize() {
@@ -248,7 +255,11 @@ export default function ProjectDetail({ projectId, onBack }) {
           </div>
 
           <section>
-            <ItemsTable items={items} onCategoryChange={handleCategoryChange} />
+            <ItemsTable
+              items={items}
+              onCategoryChange={handleCategoryChange}
+              onEdit={setEditingItem}
+            />
           </section>
         </>
       )}
@@ -258,6 +269,14 @@ export default function ProjectDetail({ projectId, onBack }) {
           invoice={editingInvoice}
           onClose={() => setEditingInvoice(null)}
           onSave={handleSaveInvoiceEdit}
+        />
+      )}
+
+      {editingItem && (
+        <ItemEditModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSave={handleSaveItemEdit}
         />
       )}
     </div>

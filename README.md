@@ -133,9 +133,12 @@ Endpointy — projekty (trwałe, zapisywane w SQLite pod `backend/data/app.db`):
 - `GET /api/items?project_id=&year=&kierownik=` — pozycje (globalnie, dla
   projektu i/lub dla roku i/lub dla kierownika projektu) — używane do
   wykresu kosztów per kategoria i tabeli pozycji.
-- `PATCH /api/items/{item_id}` `{kategoria_klucz}` — ręczna korekta kategorii
-  jednej pozycji z GUI (oznaczana jako `manual_override`, więc
-  `recategorize` jej domyślnie nie nadpisze).
+- `PATCH /api/items/{item_id}` `{kategoria_klucz?, opis?, indeks?, pkwiu?,
+  ilosc?, jm?, cena_netto?, wartosc_netto?, stawka_vat?, kwota_vat?,
+  wartosc_brutto?}` — ręczna korekta pozycji z GUI: zmiana kategorii
+  (oznaczana jako `manual_override`, więc `recategorize` jej domyślnie nie
+  nadpisze) i/albo poprawka pozostałych pól, gdy parser źle odczytał
+  tabelę pozycji faktury. Można wysłać dowolny podzbiór pól naraz.
 - `GET /api/years?project_id=` — lista lat, dla których są dane (globalnie
   albo w obrębie jednego projektu) — zasila filtr roku w GUI.
 - `GET /api/kierownicy` — lista unikalnych kierowników projektów — zasila
@@ -179,10 +182,13 @@ ma trzy zakładki:
   (przycisk ✎) i usuwać (z potwierdzeniem) — usuniętą fakturę można wgrać
   ponownie (np. po poprawieniu pliku) tak samo jak nową; wgranie tego
   samego numeru faktury u tego samego sprzedawcy drugi raz nie jest samo
-  w sobie blokowane, tylko oznaczone ostrzeżeniem. Kategorię pozycji można poprawić
-  bezpośrednio z listy rozwijanej w tabeli, a przycisk „Przelicz kategorie
-  ponownie” przelicza wszystkie pozycje projektu na nowo (z poszanowaniem
-  ręcznych poprawek). Tak samo jak w szybkiej analizie, nad wynikami
+  w sobie blokowane, tylko oznaczone ostrzeżeniem. Tabela pozycji pokazuje,
+  z jakiego pliku pochodzi dana pozycja (kolumna „Plik”), a każdą pozycję
+  można poprawić ręcznie (przycisk ✎ — opis, indeks, ilość, ceny...), nie
+  tylko jej kategorię — tę ostatnią można zmienić też bezpośrednio z listy
+  rozwijanej w tabeli. Przycisk „Przelicz kategorie ponownie” przelicza
+  wszystkie pozycje projektu na nowo (z poszanowaniem ręcznych poprawek).
+  Tak samo jak w szybkiej analizie, nad wynikami
   wyświetla się ostrzeżenie o niekompletnie odczytanych fakturach i
   pozycjach o niskiej pewności kategoryzacji.
 - **Podsumowanie roczne** — zestawienie kosztów per kategoria ze wszystkich

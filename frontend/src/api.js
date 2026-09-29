@@ -133,6 +133,14 @@ export function updateItemCategory(itemId, kategoriaKlucz) {
   });
 }
 
+export function updateItem(itemId, fields) {
+  return request(`/api/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+}
+
 // ── Kopia zapasowa ───────────────────────────────────────────────────
 
 export function backupUrl() {

@@ -350,20 +350,44 @@ def edit_invoice(project_id: str, invoice_id: str, body: InvoiceUpdate):
     return updated
 
 
-class ItemCategoryUpdate(BaseModel):
-    kategoria_klucz: str
+class ItemUpdate(BaseModel):
+    kategoria_klucz: str | None = None
+    opis: str | None = None
+    indeks: str | None = None
+    pkwiu: str | None = None
+    ilosc: float | None = None
+    jm: str | None = None
+    cena_netto: float | None = None
+    wartosc_netto: float | None = None
+    stawka_vat: str | None = None
+    kwota_vat: float | None = None
+    wartosc_brutto: float | None = None
 
 
 @app.patch("/api/items/{item_id}")
-def edit_item_category(item_id: int, body: ItemCategoryUpdate):
-    """Ręczna korekta kategorii jednej pozycji z GUI. Oznaczana jako
-    manual_override, więc 'Przelicz kategorie ponownie' jej nie nadpisze."""
-    nazwa = KATEGORIE.get(body.kategoria_klucz)
-    if not nazwa:
-        raise HTTPException(400, f"Nieznana kategoria: {body.kategoria_klucz}")
-    if not db.set_item_category(item_id, body.kategoria_klucz, nazwa):
+def edit_item(item_id: int, body: ItemUpdate):
+    """Ręczna poprawka pozycji z GUI — kategorii (oznaczana jako
+    manual_override, więc 'Przelicz kategorie ponownie' jej nie nadpisze)
+    i/albo pozostałych pól (opis, ilość, cena...), gdy parser źle odczytał
+    tabelę pozycji faktury."""
+    fields = body.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(400, "Brak pól do zapisania.")
+
+    found = False
+    if "kategoria_klucz" in fields:
+        klucz = fields.pop("kategoria_klucz")
+        nazwa = KATEGORIE.get(klucz)
+        if not nazwa:
+            raise HTTPException(400, f"Nieznana kategoria: {klucz}")
+        found = db.set_item_category(item_id, klucz, nazwa) or found
+
+    if fields:
+        found = db.update_item(item_id, fields) or found
+
+    if not found:
         raise HTTPException(404, "Nie znaleziono pozycji.")
-    return {"ok": True, "kategoria_klucz": body.kategoria_klucz, "kategoria_nazwa": nazwa}
+    return {"ok": True}
 
 
 @app.post("/api/projects/{project_id}/recategorize")

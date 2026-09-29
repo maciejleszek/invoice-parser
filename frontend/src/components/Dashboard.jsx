@@ -3,6 +3,7 @@ import StatTile from "./StatTile";
 import CategoryChart from "./CategoryChart";
 import TrendChart from "./TrendChart";
 import ItemsTable from "./ItemsTable";
+import ItemEditModal from "./ItemEditModal";
 import YearFilter from "./YearFilter";
 import KierownikFilter from "./KierownikFilter";
 import Loading from "./Loading";
@@ -17,6 +18,7 @@ export default function Dashboard() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
 
   useEffect(() => {
     api.listYears().then(setYears).catch((e) => setError(e.message));
@@ -44,6 +46,11 @@ export default function Dashboard() {
       setError(e.message);
       api.listItems({ year, kierownik }).then(setItems);
     }
+  }
+
+  async function handleSaveItemEdit(fields) {
+    await api.updateItem(editingItem.id, fields);
+    api.listItems({ year, kierownik }).then(setItems);
   }
 
   const invoiceCount = useMemo(
@@ -96,9 +103,21 @@ export default function Dashboard() {
           <TrendChart items={items} />
 
           <section>
-            <ItemsTable items={items} onCategoryChange={handleCategoryChange} />
+            <ItemsTable
+              items={items}
+              onCategoryChange={handleCategoryChange}
+              onEdit={setEditingItem}
+            />
           </section>
         </>
+      )}
+
+      {editingItem && (
+        <ItemEditModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSave={handleSaveItemEdit}
+        />
       )}
     </div>
   );

@@ -86,6 +86,14 @@ def test_full_project_lifecycle(db):
     assert changed == 1
     assert db.list_items(project_id=project["id"])[0]["kategoria_klucz"] == "elektryka"
 
+    # Ręczna poprawka pozycji (opis/ilość/cena błędnie odczytane przez parser)
+    assert db.update_item(item_id, {"opis": "Śruba M10", "ilosc": 5, "cena_netto": 12.5}) is True
+    fixed = db.list_items(project_id=project["id"])[0]
+    assert fixed["opis"] == "Śruba M10"
+    assert fixed["ilosc"] == 5
+    assert fixed["cena_netto"] == 12.5
+    assert db.update_item(999999, {"opis": "brak"}) is False  # nieistniejąca pozycja
+
     # Edycja nagłówka faktury (rok przeliczony na nowo z nowej daty)
     updated = db.update_invoice(project["id"], invoice_id, {
         "numer_faktury": "FV1-FIXED", "data_faktury": "2027-03-01",

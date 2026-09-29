@@ -24,7 +24,7 @@ function passesConfidence(pewnosc, filter) {
   return true;
 }
 
-export default function ItemsTable({ items, onCategoryChange }) {
+export default function ItemsTable({ items, onCategoryChange, onEdit }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [confidence, setConfidence] = useState("all");
@@ -44,7 +44,8 @@ export default function ItemsTable({ items, onCategoryChange }) {
       return (
         (it.opis || "").toLowerCase().includes(q) ||
         (it.indeks || "").toLowerCase().includes(q) ||
-        (it.numer_faktury || "").toLowerCase().includes(q)
+        (it.numer_faktury || "").toLowerCase().includes(q) ||
+        (it.plik || "").toLowerCase().includes(q)
       );
     });
   }, [items, query, category, confidence]);
@@ -58,7 +59,7 @@ export default function ItemsTable({ items, onCategoryChange }) {
         <div className="table-card__filters">
           <input
             type="search"
-            placeholder="Szukaj po opisie, indeksie, numerze faktury…"
+            placeholder="Szukaj po opisie, indeksie, numerze faktury, pliku…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="text-input"
@@ -93,6 +94,7 @@ export default function ItemsTable({ items, onCategoryChange }) {
         <table className="data-table">
           <thead>
             <tr>
+              <th>Plik</th>
               <th>Faktura</th>
               <th>Opis</th>
               <th>Indeks</th>
@@ -103,11 +105,15 @@ export default function ItemsTable({ items, onCategoryChange }) {
               <th className="num">Wartość brutto</th>
               <th>Kategoria</th>
               <th>Pewność</th>
+              {onEdit && <th></th>}
             </tr>
           </thead>
           <tbody>
             {filtered.map((it, i) => (
               <tr key={it.id ?? i}>
+                <td className="mono" title={it.plik}>
+                  {it.plik || "—"}
+                </td>
                 <td className="mono">{it.numer_faktury || "—"}</td>
                 <td className="opis-cell" title={it.opis}>
                   {it.opis || "—"}
@@ -148,6 +154,20 @@ export default function ItemsTable({ items, onCategoryChange }) {
                 <td>
                   <ConfidenceBadge value={it.pewnosc ?? 0} />
                 </td>
+                {onEdit && (
+                  <td className="row-actions">
+                    {it.id != null && (
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Popraw pozycję"
+                        onClick={() => onEdit(it)}
+                      >
+                        ✎
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
