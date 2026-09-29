@@ -23,6 +23,17 @@ export default function InvoiceEditModal({ invoice, onClose, onSave }) {
     setValues((v) => ({ ...v, [key]: val }));
   }
 
+  // Enter w dowolnym polu domyślnie wysyła cały formularz (zwykłe <form>
+  // w przeglądarce) — zamiast dać się złapać na to samo co w edycji
+  // pozycji (okno zamyka się i zapisuje przedwcześnie, zanim użytkownik
+  // poprawi resztę pól), Enter po prostu nic nie robi poza przyciskiem
+  // „Zapisz”.
+  function handleFormKeyDown(e) {
+    if (e.key === "Enter" && e.target.tagName === "INPUT") {
+      e.preventDefault();
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
@@ -48,7 +59,12 @@ export default function InvoiceEditModal({ invoice, onClose, onSave }) {
 
   return (
     <Modal title={`Popraw fakturę — ${invoice.plik}`} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="modal-panel__body" style={{ padding: 0 }}>
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={handleFormKeyDown}
+        className="modal-panel__body"
+        style={{ padding: 0 }}
+      >
         {FIELDS.map((f) => (
           <div className="field" key={f.key}>
             <label className="field-label" htmlFor={`inv-${f.key}`}>

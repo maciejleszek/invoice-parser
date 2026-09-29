@@ -25,6 +25,18 @@ export default function ItemEditModal({ item, onClose, onSave }) {
     setValues((v) => ({ ...v, [key]: val }));
   }
 
+  // Bug: Enter w dowolnym z 10 pól domyślnie wysyła cały formularz (tak
+  // działa zwykły <form> w przeglądarce) — dla użytkownika wyglądało to
+  // jak samoistne zamknięcie okna zaraz po wpisaniu wartości w pole, choć
+  // w rzeczywistości formularz się zapisywał i zamykał przedwcześnie,
+  // zanim zdążył poprawić resztę pól. Enter ma po prostu nic nie robić,
+  // dopóki nie jest naciśnięty na samym przycisku „Zapisz”.
+  function handleFormKeyDown(e) {
+    if (e.key === "Enter" && e.target.tagName === "INPUT") {
+      e.preventDefault();
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
@@ -50,7 +62,12 @@ export default function ItemEditModal({ item, onClose, onSave }) {
 
   return (
     <Modal title={`Popraw pozycję — ${item.numer_faktury || item.plik || ""}`} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="modal-panel__body" style={{ padding: 0 }}>
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={handleFormKeyDown}
+        className="modal-panel__body"
+        style={{ padding: 0 }}
+      >
         {FIELDS.map((f) => (
           <div className="field" key={f.key}>
             <label className="field-label" htmlFor={`item-${f.key}`}>
