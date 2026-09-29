@@ -1028,8 +1028,16 @@ def extract_header(text: str, tables: list, vendor: str,
         h["razem_brutto"] = clean_amount(fv(
             r"(?:Total\s+[€£$]?\s*Incl\.?\s*VAT|Do\s+zapłaty(?:\s+brutto)?|"
             r"Razem\s+do\s+zapłaty|INVOICE AMOUNT\s+EUR|Kwota należności ogółem|"
+            r"Nale[żz]no[śs][ćc]|"  # np. Sonepar: "NALEŻNOŚĆ: 329,64 PLN"
             rf"Warto[śs][cć]\s+sprzeda[żz]y\s+brutto)[^\d\n]*({_MONEY})",
             rf"Total\s+(?:EUR|USD|GBP|PLN|CHF)\s+({_MONEY})",
+            # Wiersz podsumowania "Razem 106,64 24,53 131,17" (netto, VAT,
+            # brutto na jednej linii, bez osobnej etykiety "Do zapłaty") —
+            # trzecia liczba to brutto. Spotykane np. u Tasta Armatura,
+            # gdzie "Do zapłaty" i jego wartość trafiają w różne komórki
+            # tabeli (różne linie wyekstrahowanego tekstu), nieuchwytne
+            # przez wzorce wyżej.
+            rf"(?:RAZEM|Razem)(?!\s+do\s+zapłaty)[:\s]+{_MONEY}\s+{_MONEY}\s+({_MONEY})",
         ))
     if not h.get("razem_netto"):
         # "Subtotal" jest sprawdzany jako ostatni (osobny, niższy priorytet
@@ -1136,7 +1144,38 @@ def parse_invoice(pdf_path: str) -> tuple[dict, list[dict]] | tuple[None, None]:
     if not items:
         items = parse_text_universal(full_text)
 
+    if not items:
+        items = _synthesize_fallback_item(header)
+
     return header, items
+
+
+def _synthesize_fallback_item(header: dict) -> list[dict]:
+    """Gdy żaden parser tabeli pozycji nic nie znalazł (inny układ kolumn
+    niż obsługiwane formaty, albo faktura usługowa bez żadnej tabeli —
+    sama "Montaż instalacji..." i jedna kwota), a mimo to znamy sumę
+    faktury z nagłówka — lepiej dać JEDNĄ zbiorczą pozycję niż zgubić cały
+    koszt tej faktury z zestawień i wykresów (poprzednio: 0 pozycji =
+    faktura całkowicie niewidoczna w rozbiciu na kategorie, mimo że jej
+    kwota jest znana). Opis wprost mówi o braku rozbicia, więc trafi do
+    kategorii "inne" z niską pewnością — dokładnie tam, gdzie użytkownik
+    powinien to ręcznie sprawdzić (patrz AnalysisQualityBanner), zamiast
+    udawać precyzję, której nie ma."""
+    netto, brutto = header.get("razem_netto"), header.get("razem_brutto")
+    if netto is None and brutto is None:
+        return []
+    netto = netto if netto is not None else brutto
+    brutto = brutto if brutto is not None else netto
+    return [{
+        "lp": 1,
+        "opis": f"Cała faktura — {header.get('sprzedawca') or 'nieznany sprzedawca'} "
+                "(pozycji nie udało się rozpoznać osobno)",
+        "indeks": "", "pkwiu": "", "ilosc": 1, "jm": "szt",
+        "cena_netto": netto, "wartosc_netto": netto,
+        "stawka_vat": None,
+        "kwota_vat": round(brutto - netto, 2) if brutto is not None and netto is not None else None,
+        "wartosc_brutto": brutto,
+    }]
 
 
 # ══════════════════════════════════════════════════════════════

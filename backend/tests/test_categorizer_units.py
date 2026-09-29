@@ -12,6 +12,7 @@ from app.categorizer import (
     _looks_like_real_vendor_name,
     _map_columns,
     _strip_diacritics,
+    _synthesize_fallback_item,
     clean_amount,
     detect_vendor,
     extract_header,
@@ -345,3 +346,51 @@ class TestExtractHeaderTwoColumnVendorSplit:
         h = extract_header(text, tables=[], vendor="euroterm",
                             page0_words=words, page0_width=620)
         assert h["sprzedawca"] == "EUROTERM TGS sp. z o.o."
+
+
+class TestExtractHeaderTotalsFromUnusualLabels:
+    def test_razem_brutto_from_three_number_summary_line_without_label(self):
+        # Bug: Tasta Armatura pisze "Do zapłaty" i jego wartość w RÓŻNYCH
+        # komórkach/liniach wyekstrahowanego tekstu (układ tabelaryczny),
+        # więc wzorce szukające liczby zaraz po etykiecie nic nie łapały —
+        # mimo że podsumowanie netto/VAT/brutto stoi tuż obok, w jednej,
+        # w pełni czytelnej linii "Razem X Y Z".
+        text = (
+            "Faktura VAT 2025/06/FA/CD/461\n"
+            "Razem 106,64 24,53 131,17\n"
+            "Termin płatności Bank Do zapłaty\n"
+            "30-07-2025 BNP Paribas Bank Polska S.A.\n"
+            "131,17 PLN\n"
+        )
+        h = extract_header(text, tables=[], vendor="generic")
+        assert h["razem_brutto"] == 131.17
+
+    def test_razem_brutto_from_naleznosc_label(self):
+        # Bug: Sonepar używa etykiety "NALEŻNOŚĆ:", nieobecnej wcześniej
+        # w liście rozpoznawanych wariantów "kwota do zapłaty".
+        text = "Suma 268,00 61,64 329,64\nNALEŻNOŚĆ: 329,64 PLN\n"
+        h = extract_header(text, tables=[], vendor="generic")
+        assert h["razem_brutto"] == 329.64
+
+
+class TestSynthesizeFallbackItem:
+    def test_creates_one_item_from_known_total_when_table_unparseable(self):
+        # Bug: gdy żaden parser tabeli pozycji nic nie znalazł (inny układ
+        # kolumn niż obsługiwane formaty, albo faktura usługowa bez żadnej
+        # tabeli — np. "Montaż instalacji tryskaczowej" za jedną kwotę),
+        # cała faktura znikała z zestawień kosztów mimo znanej sumy z
+        # nagłówka. Jedna zbiorcza pozycja jest gorsza niż rozbicie, ale
+        # dużo lepsza niż całkowita utrata kosztu tej faktury.
+        header = {"sprzedawca": "Acme Sp. z o.o.", "razem_netto": 100.0, "razem_brutto": 123.0}
+        items = _synthesize_fallback_item(header)
+        assert len(items) == 1
+        assert items[0]["wartosc_brutto"] == 123.0
+        assert items[0]["wartosc_netto"] == 100.0
+        assert "Acme Sp. z o.o." in items[0]["opis"]
+
+    def test_returns_nothing_without_any_known_total(self):
+        assert _synthesize_fallback_item({"sprzedawca": "Acme"}) == []
+
+    def test_fills_missing_side_from_the_other_when_only_one_total_known(self):
+        items = _synthesize_fallback_item({"razem_netto": 100.0, "razem_brutto": None})
+        assert items[0]["wartosc_brutto"] == 100.0
