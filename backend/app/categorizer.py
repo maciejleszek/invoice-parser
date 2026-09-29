@@ -46,115 +46,157 @@ from openpyxl.utils import get_column_letter
 # ══════════════════════════════════════════════════════════════
 
 KATEGORIE = {
-    "sygnalizacja_pozaru": "🔴 Sygnalizacja pożaru",
-    "elektryka":           "⚡ Elektryka",
-    "automatyka":          "🔧 Automatyka / Sterowniki",
-    "hydraulika":          "💧 Hydraulika / P.poż",
-    "gazownictwo":         "🔥 Gazownictwo",
-    "transport":           "🚚 Transport / Logistyka",
-    "teletechnika":        "📡 Teletechnika / IT",
-    "mechanika":           "⚙️ Mechanika / Ślusarka",
-    "obudowy_szafy":       "🗃️ Obudowy / Szafy elektryczne",
-    "narzedzia":           "🔨 Narzędzia / Materiały pomocnicze",
-    "ogolnobudowlane":     "🏗️ Ogólnobudowlane",
-    "inne":                "❓ Inne / Nieokreślone",
+    "rurociagi_prefabrykacja":     "🔧 Rurociągi i prefabrykacja",
+    "armatura_tryskaczowa":        "🚿 Rurociągi, armatura i osprzęt tryskaczowy",
+    "mocowania_podwieszenia":      "🔩 Systemy mocowań i podwieszeń",
+    "urzadzenia_pompownie":        "💧 Urządzenia, pompownie i zestawy hydrantowe",
+    "instalacje_elektryczne":      "⚡ Instalacje elektryczne i okablowanie ppoż.",
+    "detekcja_sygnalizacja":       "🔴 Systemy detekcji i sygnalizacji pożaru (SSP)",
+    "zabezpieczenia_ogniochronne": "🛡️ Zabezpieczenia ogniochronne i izolacje",
+    "uslugi_podwykonawcow":        "👷 Usługi podwykonawców – montaż",
+    "uslugi_obce":                 "🧪 Usługi obce – rozruch, odbiory, pomiary",
+    "wynajem_sprzetu":             "🏗️ Wynajem sprzętu i transport maszyn",
+    "zaplecze_budowy":             "🏕️ Zaplecze budowy i wynajem kontenerów",
+    "transport_logistyka":         "🚚 Transport i logistyka",
+    "materialy_pomocnicze":        "🧰 Materiały pomocnicze, BHP i chemia",
+    "rozliczenia_pracownicze":     "🧾 Rozliczenia pracownicze, paliwo i delegacje",
+    "bez_wplywu_na_koszt":         "➖ Pozycje bez wpływu na koszt",
+    "inne":                        "❓ Inne / Nieokreślone",
 }
 
 KEYWORD_RULES: dict[str, list[str]] = {
-    "sygnalizacja_pozaru": [
-        # Centrale, czujniki
+    "rurociagi_prefabrykacja": [
+        # Surowe rury/profile i prace warsztatowe nad nimi (nie gotowa
+        # armatura/osprzęt — to niżej, w armatura_tryskaczowa) — rozróżnienie
+        # widoczne w praktyce u dostawców takich jak DEKK PIPES: "prace
+        # warsztatowe"/"prefabrykacja"/"malowanie armatury" obok samej rury
+        # to inny koszt niż kupione gotowe złączki/zawory.
+        "prefabrykacj", "ceownik", "płaskownik", "prace warsztatowe",
+        "malowanie armatury", "kątownik stalowy",
+    ],
+    "armatura_tryskaczowa": [
+        # UWAGA: polskie rzeczowniki odmieniają się przez przypadki (np.
+        # "rura" nie złapie bardzo częstego w opisach "rury"/"rurze"/"rurą"),
+        # więc kluczowe słowa poniżej to celowo rdzenie/tematy fleksyjne
+        # (bez końcówki przypadka), nie słownikowa forma mianownika — inaczej
+        # cichnie przegapiają większość realnych opisów pozycji.
+        "rur", "zawór", "zawor", "armatur", "kolan", "trójnik", "trojnik",
+        "złączk", "zlaczk", "redukcj", "zaślepk", "zaslepk", "uszczelk",
+        "nasada hydrantowa", "manometr", "dzwon alarmowy", "przepustnic", "filtr skośny",
+        "zawór zwrotny", "klapa przeciwpożarowa", "tryskacz", "sprinkler", "zraszacz",
+        # EN — zawory/osprzęt tryskaczowy
+        "grooved butterfly valve", "swing check valve", "gate valve", "butterfly valve",
+        "check valve", "alarm gong", "water motor", "manifold",
+        "hose", "grooved", "os&y", "elbow", "coupling", "tee", "reducer", "cap",
+        "orifice", "nozzle", "accelerator", "solenoid",
+    ],
+    "mocowania_podwieszenia": [
+        # Systemy mocowań rur (Sikla, MEFA i podobne marki) + osprzęt złączny
+        # ogólnego użytku (śruby/nakrętki/podkładki) — w tej branży niemal
+        # zawsze kupowany właśnie pod mocowania/podwieszenia rurociągów, nie
+        # jako "mechanika" w oderwaniu od kontekstu.
+        # (rdzenie fleksyjne — patrz komentarz w armatura_tryskaczowa; osobne
+        # rdzenie zamiast sklejonej frazy ze spacją, bo odmieniona końcówka
+        # PIERWSZEGO słowa ("pętla"/"pętle") wypada właśnie między rdzeniem
+        # a spacją — sklejona fraza nie dopasuje się do żadnej odmiany)
+        "pętl", "rurow", "płytk", "podstaw",
+        "konsol", "szyna montaż", "szyna montaz",
+        "uchwyt", "obejm", "kotw", "kotew", "śrub", "srub", "nakrętk", "nakretk",
+        "podkładk", "podkladk", "kołek", "kołk", "kolek", "kolk", "klamr", "wspornik", "gwintowan",
+        "cyl bracket", "cyl rail", "rail end cover", "mounting bracket", "wysięgnik", "wysiegnik",
+    ],
+    "urzadzenia_pompownie": [
+        "pomp", "zestaw hydrantowy", "zestawy hydrantowe", "hydrant", "zawór alarmowy", "zawor alarmowy",
+        "komora opóźniając", "komora opozniajac", "wziernik", "zawór pływakowy",
+        "zawor plywakowy", "presostat", "szafa sterownicza", "zawór kontrolno-alarmowy",
+        "przyłącze testowe", "przylacze testowe", "supervisory switch", "wodomierz",
+        "alarm valve", "waterflow indicator", "retard chamber",
+        "dry pipe", "dpv", "wet alarm", "deluge",
+    ],
+    "instalacje_elektryczne": [
+        "wyłącznik nadprądowy", "wyłącznik różnicowy", "bezpiecznik",
+        "rozłącznik izolacyjny", "rozłącznik", "przewód", "kabel", "drut",
+        "listwa zaciskowa", "gniazdo elektryczne", "wtyczka przenośna", "wtyczka",
+        "transformator", "zasilacz", "lampka kontrolna", "łącznik mocujący",
+        "przycisk sterowniczy", "tablica rozdzielcza", "rozdzielnia", "rozdzielnica",
+        "falownik", "softstart", "stycznik", "przekaźnik", "przekaznik", "sterownik plc", "plc",
+        "cable kit", "cable", "wire", "manosw", "pressure switch",
+    ],
+    "detekcja_sygnalizacja": [
         "sygnalizator", "saoz", "czujnik dymu", "czujnik ciepła", "czujnik pożar",
         "centrala pożar", "centrala poż", "centrala po ", "fc721", "fdci", "fdcio", "fdch",
         "konwencjonalny", "adresowalny", "pętlowy", "pętlowa", "linia dozorowa",
         "ręczny ostrzegacz", "syrena", "flaszer", "lampka alarmowa",
-        "akumulator 12v", "pss 50va",
-        "wkład modułu", "obudowa modułu",
-        # Kody produktów Siemens SAP
+        "akumulator 12v", "pss 50va", "wkład modułu", "obudowa modułu",
         "fa2003", "s54400", "s54312", "fdch221", "fdcio222", "fdci222", "fc721-zz",
-        # Klapy / napędy pożarowe
         "klapa pożarowa", "klapa dymna", "klapa odcinająca", "napęd klapy",
         "mwffid", "mwf", "bfl24", "bfl", "belimo", "fire damper", "smoke damper",
-        # Przekaźniki SAP
         "pz-828", "przekaźnik przelania",
-        # Angielskie — SAP / tryskacze
-        "fire alarm", "smoke detector", "solenoid", "nozzle calibrated",
-        "alarm valve", "waterflow indicator", "retard chamber", "supervisory switch",
-        "fire suppression", "sprinkler", "dry pipe", "dpv", "wet alarm",
-        "orifice", "nozzle", "accelerator", "deluge",
+        "fire alarm", "smoke detector",
+        # UWAGA: celowo NIE ma tu "sprinkler"/"fire suppression"/"dry pipe"/
+        # "wet alarm"/"deluge"/"nozzle" itp. — to fizyczne elementy instalacji
+        # tryskaczowej (zawory, dysze), nie elektroniczna detekcja/sygnalizacja
+        # (SSP) — trafiają do armatura_tryskaczowa/urzadzenia_pompownie.
+        # Realny bug: głowice tryskaczowe Rapidrop ("RD025 Sprinkler...")
+        # lądowały tu tylko przez angielskie słowo "Sprinkler" w opisie.
     ],
-    "elektryka": [
-        "wyłącznik nadprądowy", "wyłącznik różnicowy", "bezpiecznik",
-        "rozłącznik izolacyjny", "rozłącznik", "is-25", "pl6-b", "hn-c",
-        "przewód", "kabel", "drut", "listwa zaciskowa",
-        "gniazdo elektryczne", "wtyczka",
-        "transformator", "zasilacz", "pss ", "ups ",
-        "lampka kontrolna", "główka lampki", "element z diodą", "led",
-        "łącznik mocujący", "m22-", "przycisk sterowniczy",
-        "tablica rozdzielcza", "rozdzielnia",
-        "cable kit", "cable", "wire", "manosw", "pressure switch",
+    "zabezpieczenia_ogniochronne": [
+        "zabezpieczenie ogniochronne", "farba pęczniejąca", "farba peczniejaca",
+        "płyta ognioochronna", "plyta ognioochronna", "izolacja przeciwpożarowa",
+        "izolacja przeciwpozarowa", "wełna mineralna", "welna mineralna",
+        "uszczelnienie ppoż", "uszczelnienie ppoz", "silikon ognioodporny",
     ],
-    "automatyka": [
-        "przekaźnik miniaturowy", "przekaźnik czasowy", "przekaźnik bistabilny",
-        "przekaźnik", "gniazdo przekaźnika", "gniazdo do serii",
-        "sterownik plc", "plc", "przetwornik", "regulator",
-        "falownik", "softstart", "stycznik", "przekaźnik termiczny",
-        "40.52", "95.05 spa", "m22-a", "actuator",
+    "uslugi_podwykonawcow": [
+        # Faktury usługowe (podwykonawstwo montażowe) zwykle nie mają
+        # ŻADNEGO słowa kluczowego produktu w opisie — dla znanych,
+        # powtarzających się podwykonawców dużo pewniejszym sygnałem jest
+        # tożsamość dostawcy (patrz _VENDOR_CATEGORY_HINTS), te słowa
+        # kluczowe to tylko dodatkowa siatka bezpieczeństwa.
+        "montaż instalacji", "montaz instalacji", "wykonanie instalacji",
+        "robocizna", "usługa montażowa", "usluga montazowa", "usługi instalacyjne",
     ],
-    "obudowy_szafy": [
-        "obudowa metalowa", "szafa elektryczna", "szafa sterownicza",
-        "szafka", "rozdzielnica", "ip66", "ip65", "ip54",
-        "gt50", "puszkowanie", "kanał kablowy",
-        "korytko kablowe", "drabinka kablowa",
-        "cabinet", "enclosure",
-        # UWAGA: "bracket/rail" do mechaniki, nie szaf
+    "uslugi_obce": [
+        "rozruch", "odbiór techniczny", "odbior techniczny", "pomiary elektryczne",
+        "przegląd techniczny", "przeglad techniczny", "uruchomienie instalacji",
+        "serwis gwarancyjny",
     ],
-    "hydraulika": [
-        "rura", "zawór", "armatura", "pompa wody", "pompa obiegowa",
-        "kolektor", "trójnik", "uszczelka",
-        "wodomierz", "hydrant", "tryskacz", "zraszacz",
-        "klapa przeciwpożarowa", "przepustnica", "filtr skośny", "zawór zwrotny",
-        # EN fire suppression valves / fittings
-        "grooved butterfly valve", "swing check valve", "gate valve", "butterfly valve",
-        "check valve", "alarm gong", "water motor", "manifold",
-        "hose", "grooved", "os&y", "obejm", "kotw",
+    "wynajem_sprzetu": [
+        "wynajem", "najem", "dzierżaw", "dzierzaw", "wózek widłowy", "wozek widlowy",
+        "wózka widłow", "wozka widlow", "drabin", "rusztowani", "podnośnik", "podnosnik",
+        "agregat prądotwórczy", "agregat pradotworczy",
     ],
-    "gazownictwo": [
-        "rura gazowa", "zawór gazowy", "gazomierz", "regulator gazu",
-        "armatura gazowa", "instalacja gazowa",
+    "zaplecze_budowy": [
+        "kontener", "zaplecze budowy", "zaplecza budowy", "barakowóz", "barakowoz",
+        "toaleta przenośna", "toaleta przenosna", "najem kontenera",
     ],
-    "transport": [
-        "spedycja", "transport", "przewóz", "kurier",
-        # "dostawa/dostawy/dostawie/dostawę" (przesyłka), NIE "dostaw" —
-        # ten ostatni jako substring łapał też "dostawca/dostawcy"
-        # (SPRZEDAWCA/wystawca faktury, zupełnie inne pojęcie niż koszt
-        # przesyłki), co dawało fałszywie wysokie kwoty w kategorii
-        # transport na fakturach, gdzie słowo "dostawca" pojawiało się
-        # gdziekolwiek w opisie/indeksie pozycji.
+    "transport_logistyka": [
+        # UWAGA: rdzenie fleksyjne, nie mianownik — "spedycja" (mianownik)
+        # nie złapałoby wcale bardzo częstego w praktyce "Koszty spedycji"
+        # (dopełniacz). Realny bug znaleziony na żywych danych.
+        "spedycj", "transport", "przewóz", "kurier",
+        # "dostaw" + samogłoska (dostawa/dostawy/dostawie/dostawę), NIE samo
+        # "dostaw" bez dalszego sprawdzenia — ten ostatni jako substring
+        # łapał też "dostawca/dostawcy" (SPRZEDAWCA/wystawca faktury,
+        # zupełnie inne pojęcie niż koszt przesyłki), co dawało fałszywie
+        # wysokie kwoty w tej kategorii na fakturach, gdzie słowo "dostawca"
+        # pojawiało się gdziekolwiek w opisie/indeksie pozycji.
         "dostawa", "dostawy", "dostawie", "dostawę",
-        "przesyłka", "logistyka",
+        "przesyłk", "logistyk", "usługa transportowa",
         "shipping", "freight", "handling charge",
     ],
-    "teletechnika": [
-        "router", "kabel sieciowy", "patchcord", "patch panel",
-        "szafa rack", "kamera", "nvr", "dvr",
-        "czujnik ruchu", "access point", "antena",
+    "materialy_pomocnicze": [
+        "rękawic", "rekawic", "okular", "kask", "kombinezon", "kłódk", "klodk",
+        "klej", "silikon", "uszczelniacz", "taśm", "tasm", "foli",
+        "farb", "lakier", "emali", "grunto-emali", "grunt",
+        "wiertark", "wiertł", "wiertl", "klucz", "śrubokręt", "srubokret", "miar",
+        "pędzel", "pedzel", "chemia budowlana", "ręcznik przemysłowy", "recznik przemyslowy",
     ],
-    "mechanika": [
-        "śruba", "nakrętka", "podkładka", "kołek", "wiertło",
-        "wspornik", "uchwyt", "konsol", "profil stalowy",
-        "cyl bracket", "cyl rail", "rail end cover",
-        "switch kit", "limit switch", "mounting bracket",
-        "gwintowan", "kątownik", "klamr", "szyna montaż",
+    "rozliczenia_pracownicze": [
+        "delegacj", "diet", "ryczałt paliwowy", "ryczalt paliwowy",
+        "rozliczenie pracownicze",
     ],
-    "narzedzia": [
-        "taśma", "uszczelniacz", "silikon", "klej", "folia",
-        "rękawice", "okulary", "kask", "kombinezon",
-        "wiertarka", "klucz", "śrubokręt", "miara",
-    ],
-    "ogolnobudowlane": [
-        "cement", "beton", "tynk", "gips", "farba", "lakier",
-        "drzwi", "okno", "podłoga", "płytka",
-        "izolacja", "wełna mineralna", "styropian",
+    "bez_wplywu_na_koszt": [
+        "zaliczka", "faktura zaliczkowa", "załącznik do faktury", "zalacznik do faktury",
     ],
 }
 
@@ -173,34 +215,36 @@ _KEYWORD_RULES_NORM: dict[str, list[tuple[str, str]]] = {
 }
 
 PKWIU_RULES: dict[str, str] = {
-    "26.30.50": "sygnalizacja_pozaru",   # Aparatura alarmowa
-    "27.20.22": "sygnalizacja_pozaru",   # Akumulatory (do SAP)
-    "27.12.40": "sygnalizacja_pozaru",   # Aparatura automatyki/detekcji
-    "22.29.29": "obudowy_szafy",         # Wyroby z tworzyw sztucznych
-    "27.12.31": "obudowy_szafy",         # Tablice / szafy rozdzielcze
-    "27.51":    "elektryka",
-    "27.12":    "elektryka",
-    "28.29":    "automatyka",
-    "28.14":    "hydraulika",            # Armatura / zawory
-    "26.30":    "teletechnika",          # Sprzęt (tele)komunikacyjny (poza 26.30.50 wyżej)
-    "25.94":    "mechanika",             # Wyroby złączne i śruby
-    "25.73":    "narzedzia",             # Narzędzia
-    "20.30":    "ogolnobudowlane",       # Farby, lakiery i podobne środki pokrywające
-    "49.41":    "transport",             # Transport drogowy towarów
-    "52.29":    "transport",             # Pozostała działalność wspomagająca transport
-    "53.20":    "transport",             # Pozostała działalność pocztowa i kurierska
+    "26.30.50": "detekcja_sygnalizacja",       # Aparatura alarmowa
+    "27.20.22": "detekcja_sygnalizacja",       # Akumulatory (do SAP)
+    "27.12.40": "detekcja_sygnalizacja",       # Aparatura automatyki/detekcji
+    "22.29.29": "materialy_pomocnicze",        # Wyroby z tworzyw sztucznych
+    "27.12.31": "instalacje_elektryczne",      # Tablice / szafy rozdzielcze
+    "27.51":    "instalacje_elektryczne",
+    "27.12":    "instalacje_elektryczne",
+    "28.29":    "urzadzenia_pompownie",        # Automatyka przemysłowa (tu: sterowanie pompami)
+    "28.14":    "armatura_tryskaczowa",        # Armatura / zawory
+    "25.94":    "mocowania_podwieszenia",      # Wyroby złączne i śruby
+    "25.73":    "materialy_pomocnicze",        # Narzędzia
+    "20.30":    "materialy_pomocnicze",        # Farby, lakiery i podobne środki pokrywające
+    "49.41":    "transport_logistyka",         # Transport drogowy towarów
+    "52.29":    "transport_logistyka",         # Pozostała działalność wspomagająca transport
+    "53.20":    "transport_logistyka",         # Pozostała działalność pocztowa i kurierska
 }
 
 WEB_HINTS: dict[str, list[str]] = {
-    "sygnalizacja_pozaru": ["fire alarm", "sygnalizacja pożaru", "pożarowy", "centrala pożarowa",
-                             "czujka", "detekcja dymu", "system sap", "fire suppression"],
-    "elektryka":           ["instalacja elektryczna", "elektryka", "wyłącznik", "bezpiecznik",
-                             "rozdzielnia", "zasilanie"],
-    "automatyka":          ["automatyka przemysłowa", "sterownik", "przekaźnik", "plc"],
-    "obudowy_szafy":       ["obudowa elektryczna", "szafa elektryczna", "rozdzielnica", "ip66"],
-    "hydraulika":          ["hydraulika", "instalacja wod-kan", "rury", "armatura", "pompa",
-                             "zawory", "sprinkler", "tryskacz"],
-    "transport":           ["transport", "spedycja", "dostawa", "logistyka"],
+    "detekcja_sygnalizacja":  ["fire alarm", "sygnalizacja pożaru", "pożarowy", "centrala pożarowa",
+                                "czujka", "detekcja dymu", "system sap", "fire suppression"],
+    "instalacje_elektryczne": ["instalacja elektryczna", "elektryka", "wyłącznik", "bezpiecznik",
+                                "rozdzielnia", "zasilanie"],
+    "urzadzenia_pompownie":   ["pompa", "zestaw hydrantowy", "hydrant", "zawór alarmowy",
+                                "stacja pompowa", "pompownia"],
+    "armatura_tryskaczowa":   ["armatura tryskaczowa", "instalacja wod-kan", "rury", "zawory",
+                                "sprinkler", "tryskacz"],
+    "mocowania_podwieszenia": ["systemy mocowań", "wsporniki rurowe", "konsole", "obejmy"],
+    "wynajem_sprzetu":        ["wynajem sprzętu budowlanego", "najem urządzeń"],
+    "materialy_pomocnicze":   ["bhp", "materiały pomocnicze budowa", "chemia budowlana"],
+    "transport_logistyka":    ["transport", "spedycja", "dostawa", "logistyka"],
 }
 
 
@@ -258,30 +302,83 @@ def _cat_web(opis, indeks="") -> tuple[str, int, str]:
 
 def _cat_heuristic(opis, indeks="") -> tuple[str, int, str]:
     t = (opis+" "+indeks).lower()
-    if re.search(r'\b(s5\d{4}|a5q\d{8}|fd[cchi])', t): return "sygnalizacja_pozaru", 70, "indeks Siemens SAP"
-    if re.search(r'\bm22-',   t): return "elektryka",    65, "seria M22"
-    if re.search(r'spedycja|dostawa|transport|kurier|shipping|freight|handling',t): return "transport", 90, "transport"
+    if re.search(r'\b(s5\d{4}|a5q\d{8}|fd[cchi])', t): return "detekcja_sygnalizacja", 70, "indeks Siemens SAP"
+    if re.search(r'\bm22-',   t): return "instalacje_elektryczne", 65, "seria M22"
+    if re.search(r'spedycja|dostawa|transport|kurier|shipping|freight|handling',t):
+        return "transport_logistyka", 90, "transport"
     # "carriage" osobno, z wykluczeniem — dwuznaczne między "koszt
     # przesyłki" (np. cała pozycja opisana po prostu "Carriage") a
     # angielskim złączem "carriage bolt/screw/nut" (śruba/wkręt/nakrętka),
     # które nie ma nic wspólnego z transportem.
     if re.search(r'\bcarriage\b', t) and not re.search(r'carriage\s*(bolt|screw|nut)', t):
-        return "transport", 90, "carriage"
-    if re.search(r'obudowa.*(ip\d+|metal)|(ip\d{2}).*(obudow|szaf)', t): return "obudowy_szafy", 75, "obudowa+IP"
-    if re.search(r'\b(kabel|przewód|cable|wire|nym|lsoh)\b', t): return "elektryka",    70, "kabel"
-    if re.search(r'\b(valve|zawór|armatura|hose|rura|zawor)\b', t): return "hydraulika",  65, "armatura"
+        return "transport_logistyka", 90, "carriage"
+    if re.search(r'obudowa.*(ip\d+|metal)|(ip\d{2}).*(obudow|szaf)', t):
+        return "instalacje_elektryczne", 75, "obudowa+IP"
+    if re.search(r'\b(kabel|przewód|cable|wire|nym|lsoh)\b', t):
+        return "instalacje_elektryczne", 70, "kabel"
+    if re.search(r'\b(valve|zawór|armatura|hose|rura|zawor)\b', t):
+        return "armatura_tryskaczowa", 65, "armatura"
     return "inne", 10, "fallback"
 
-def kategoryzuj(opis, indeks="", pkwiu="", use_web=True) -> dict:
+
+# Niektórzy dostawcy sprzedają wyłącznie jeden rodzaj usługi/kosztu
+# (podwykonawstwo montażowe, wynajem sprzętu, zaplecze budowy...) — dla
+# nich sama tożsamość jest pewniejszym sygnałem kategorii niż opis pozycji,
+# który często w ogóle nie zawiera słowa kluczowego produktu (np. "Montaż
+# instalacji tryskaczowej na obiekcie..." nie wspomina żadnej części).
+# Zestawiono na podstawie ręcznie skategoryzowanego rejestru kosztów dwóch
+# realnych projektów — obejmuje tylko dostawców, u których WSZYSTKIE
+# faktury w tym rejestrze trafiły do jednej kategorii (pomija np. Rapidrop
+# czy PPH LECH-LEX, którzy sprzedają towar z kilku różnych kategorii, więc
+# tam decyduje opis pozycji, nie tożsamość dostawcy).
+_VENDOR_CATEGORY_HINTS: list[tuple[str, str]] = [
+    (_strip_diacritics(needle.lower()), kat) for needle, kat in [
+        ("Krzysztof Jurczyński", "uslugi_podwykonawcow"),
+        ("Krzysztof Świątek", "uslugi_podwykonawcow"),
+        ("ELSA Electric", "uslugi_podwykonawcow"),
+        ("S2 Inżynieria", "uslugi_podwykonawcow"),
+        ("ELA Container", "zaplecze_budowy"),
+        ("RENTA Sp", "wynajem_sprzetu"),
+        ("Ramirent", "wynajem_sprzetu"),
+        ("Lemarpol", "wynajem_sprzetu"),
+        ("Sikla Polska", "mocowania_podwieszenia"),
+        ("EWMET", "mocowania_podwieszenia"),
+        ("MEFA POLSKA", "mocowania_podwieszenia"),
+        ("Onninen", "instalacje_elektryczne"),
+        ("SIG Sp", "zabezpieczenia_ogniochronne"),
+        ("DEKK PIPES", "rurociagi_prefabrykacja"),
+    ]
+]
+
+
+def _cat_by_vendor(sprzedawca: str) -> tuple[str, str]:
+    if not sprzedawca:
+        return "", ""
+    t = _strip_diacritics(sprzedawca.lower())
+    for needle, kat in _VENDOR_CATEGORY_HINTS:
+        if needle in t:
+            return kat, f"dostawca: '{needle}'"
+    return "", ""
+
+
+def kategoryzuj(opis, indeks="", pkwiu="", sprzedawca="", use_web=True) -> dict:
     opis, indeks, pkwiu = str(opis or "").strip(), str(indeks or "").strip(), str(pkwiu or "").strip()
+    sprzedawca = str(sprzedawca or "").strip()
+
     k1, p1, r1 = _cat_keywords(opis, indeks, pkwiu)
-    if p1 >= 70: return _wynik(k1, p1, r1, "słownik")
+    z1 = "słownik"
+    if p1 < 70:
+        kv, rv = _cat_by_vendor(sprzedawca)
+        if kv and 80 > p1:
+            k1, p1, r1, z1 = kv, 80, rv, "dostawca"
+    if p1 >= 70:
+        return _wynik(k1, p1, r1, z1)
     if use_web and WEB_AVAILABLE:
         k2, p2, r2 = _cat_web(opis, indeks)
         if p2 >= 40 and p2 > p1: return _wynik(k2, p2, r2, "internet")
     k3, p3, r3 = _cat_heuristic(opis, indeks)
     if p3 >= p1: return _wynik(k3, p3, r3, "heurystyka")
-    return _wynik(k1, p1 or 5, r1 or "brak", "słownik")
+    return _wynik(k1, p1 or 5, r1 or "brak", z1)
 
 def _wynik(klucz, pewnosc, powod, zrodlo) -> dict:
     return {"kategoria_klucz": klucz, "kategoria_nazwa": KATEGORIE.get(klucz,"❓ Inne"),
@@ -1226,10 +1323,14 @@ CLR = {"hd": "1F3864", "hb": "2E75B6", "alt": "DEEAF1", "wh": "FFFFFF",
        "tot": "FFE699", "gok": "E2EFDA", "rw": "FCE4D6", "orm": "FFF2CC"}
 
 KAT_CLR = {
-    "sygnalizacja_pozaru": "FCE4D6", "elektryka": "DEEAF1", "automatyka": "E2EFDA",
-    "obudowy_szafy": "EAF0FB", "hydraulika": "D9E1F2", "gazownictwo": "FFF2CC",
-    "transport": "F4CCFF", "teletechnika": "D6E4BC", "mechanika": "F0E6FF",
-    "narzedzia": "FFE4B5", "ogolnobudowlane": "E8E8E8", "inne": "F2F2F2",
+    "rurociagi_prefabrykacja": "D9E1F2", "armatura_tryskaczowa": "DEEAF1",
+    "mocowania_podwieszenia": "F0E6FF", "urzadzenia_pompownie": "D6EAF8",
+    "instalacje_elektryczne": "EAF0FB", "detekcja_sygnalizacja": "FCE4D6",
+    "zabezpieczenia_ogniochronne": "FFF2CC", "uslugi_podwykonawcow": "E2D9F3",
+    "uslugi_obce": "F3D9F3", "wynajem_sprzetu": "FADBD8",
+    "zaplecze_budowy": "E8E8E8", "transport_logistyka": "F4CCFF",
+    "materialy_pomocnicze": "FFE4B5", "rozliczenia_pracownicze": "E2EFDA",
+    "bez_wplywu_na_koszt": "F2F2F2", "inne": "F2F2F2",
 }
 
 def _hc(ws, r, c, v, bg=None, fg="FFFFFF", bold=True, sz=11, al="center"):
@@ -1399,18 +1500,22 @@ def build_sheet_legend(ws):
         ws.column_dimensions[get_column_letter(ci)].width = w
 
     EX = {
-        "sygnalizacja_pozaru": "Centrale SAP, czujki, sygnalizatory, klapy pożarowe, tryskacze, zawory alarmowe",
-        "elektryka":           "Wyłączniki, kable, zasilacze, lampki, rozłączniki",
-        "automatyka":          "Przekaźniki, PLC, gniazda, sterowniki",
-        "obudowy_szafy":       "Szafy elektryczne, obudowy IP66, korytka kablowe",
-        "hydraulika":          "Rury, zawory, armatura, pompy, zawory motylkowe",
-        "gazownictwo":         "Rury gazowe, zawory gazowe, gazomierze",
-        "transport":           "Spedycja, kurier, handling, shipping",
-        "teletechnika":        "Kable sieciowe, kamery, UPS, punkty dostępowe",
-        "mechanika":           "Śruby, wsporniki, szyny montażowe, uchwyty",
-        "narzedzia":           "Taśmy, silikony, drobny osprzęt",
-        "ogolnobudowlane":     "Materiały budowlane: cement, farby, izolacje",
-        "inne":                "Nierozpoznane – wymaga weryfikacji ręcznej",
+        "rurociagi_prefabrykacja":     "Ceowniki, płaskowniki, prace warsztatowe, prefabrykacja rur",
+        "armatura_tryskaczowa":        "Rury, zawory, kolanka, trójniki, złączki, tryskacze",
+        "mocowania_podwieszenia":      "Pętle rurowe, konsole, śruby, nakrętki, obejmy, kotwy",
+        "urzadzenia_pompownie":        "Pompy, zestawy hydrantowe, zawory alarmowe, presostaty",
+        "instalacje_elektryczne":      "Kable, przewody, rozdzielnice, wyłączniki, gniazda",
+        "detekcja_sygnalizacja":       "Centrale SAP, czujki, sygnalizatory, klapy pożarowe",
+        "zabezpieczenia_ogniochronne": "Farby pęczniejące, izolacje, zabezpieczenia ogniochronne",
+        "uslugi_podwykonawcow":        "Montaż instalacji, robocizna podwykonawców",
+        "uslugi_obce":                 "Rozruch, odbiory techniczne, pomiary, serwis",
+        "wynajem_sprzetu":             "Wózki widłowe, drabiny, rusztowania, podnośniki",
+        "zaplecze_budowy":             "Kontenery budowlane, zaplecze socjalne",
+        "transport_logistyka":         "Spedycja, kurier, handling, shipping",
+        "materialy_pomocnicze":        "Rękawice, kaski, kleje, silikony, farby, narzędzia",
+        "rozliczenia_pracownicze":     "Delegacje, diety, paliwo, rozliczenia pracownicze",
+        "bez_wplywu_na_koszt":         "Zaliczki, załączniki bez własnej wartości kosztowej",
+        "inne":                        "Nierozpoznane – wymaga weryfikacji ręcznej",
     }
     for ri,(k,n) in enumerate(KATEGORIE.items(),3):
         bg = KAT_CLR.get(k, CLR["wh"])
@@ -1451,7 +1556,8 @@ def categorize_files(pdf_files: list[str], use_web: bool = True,
 
         for j, item in enumerate(items, 1):
             kat = kategoryzuj(item.get("opis",""), item.get("indeks",""),
-                              item.get("pkwiu",""), use_web=use_web)
+                              item.get("pkwiu",""), header.get("sprzedawca",""),
+                              use_web=use_web)
             log(f"  [{j:2d}] {item.get('opis','')[:50]:<50} → "
                 f"{kat['kategoria_nazwa']:<32} ({kat['pewnosc']}% | {kat['zrodlo_dopasowania']})")
             all_items.append({

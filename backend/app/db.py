@@ -493,7 +493,7 @@ def items_for_recategorize(project_id: str, invoice_id: str | None = None,
     domyślnie z pominięciem tych poprawionych ręcznie (chyba że force=True,
     świadome nadpisanie także ręcznych poprawek)."""
     sql = """
-        SELECT it.id, it.opis, it.indeks, it.pkwiu
+        SELECT it.id, it.opis, it.indeks, it.pkwiu, i.sprzedawca
         FROM items it
         JOIN invoices i ON i.id = it.invoice_id
         WHERE i.project_id = :pid

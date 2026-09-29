@@ -380,7 +380,7 @@ def recategorize_project(project_id: str, invoice_id: str | None = None,
     updates = []
     for it in items:
         kat = kategoryzuj(it.get("opis", ""), it.get("indeks", ""), it.get("pkwiu", ""),
-                           use_web=use_web)
+                           it.get("sprzedawca", ""), use_web=use_web)
         updates.append({
             "id": it["id"],
             "kategoria_klucz": kat["kategoria_klucz"],

@@ -1,7 +1,22 @@
 # Invoice Parser & Categorizer
 
 Automatyczne wyciąganie danych z faktur PDF (PL + EN) i kategoryzacja pozycji
-kosztowych. Dostępne jako:
+kosztowych wg 15 kategorii biznesowych działu tryskaczowego (rurociągi i
+prefabrykacja, armatura tryskaczowa, mocowania i podwieszenia, urządzenia i
+pompownie, instalacje elektryczne, detekcja i sygnalizacja pożaru,
+zabezpieczenia ogniochronne, usługi podwykonawców, usługi obce, wynajem
+sprzętu, zaplecze budowy, transport i logistyka, materiały pomocnicze,
+rozliczenia pracownicze, pozycje bez wpływu na koszt — plus „inne" dla
+nierozpoznanych). Lista i słowa kluczowe każdej kategorii są w
+`backend/app/categorizer.py` (`KATEGORIE`/`KEYWORD_RULES`); dla dostawców
+usługowych (podwykonawstwo, wynajem, zaplecze budowy...), których opisy
+pozycji zwykle nie zawierają żadnego słowa kluczowego produktu, kategoryzacja
+dodatkowo opiera się na rozpoznanych, powtarzających się nazwach dostawców
+(`_VENDOR_CATEGORY_HINTS`). **Zmiana kategorii wymaga przeliczenia już
+zapisanych projektów** — użyj przycisku „Przelicz kategorie ponownie” w
+widoku projektu, żeby zastosować nowy słownik do wcześniej wgranych faktur.
+
+Dostępne jako:
 
 - **CLI** — `backend/app/categorizer.py`, samodzielny skrypt Python → plik Excel.
 - **REST API** — FastAPI (`backend/app/api.py`) opakowujące tę samą logikę.

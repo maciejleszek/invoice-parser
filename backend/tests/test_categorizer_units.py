@@ -6,6 +6,7 @@ znalezionemu i naprawionemu podczas pracy nad appką — trzymają regresję.
 import pytest
 
 from app.categorizer import (
+    _cat_by_vendor,
     _extract_vendor_name,
     _is_delivery_note,
     _looks_like_real_invoice_number,
@@ -260,6 +261,71 @@ class TestExtractHeaderRejectsGarbageFields:
         assert _extract_vendor_name(text) == "Sikla Polska Sp. z o.o."
 
 
+class TestPolishNounDeclension:
+    """Bug znaleziony na żywych danych: słowa kluczowe w mianowniku (np.
+    "spedycja") nie łapały bardzo częstych w praktyce form odmienionych
+    (np. "Koszty spedycji" — dopełniacz), bo dopasowanie to zwykły
+    substring, nie rozumie polskiej fleksji. Kategorie muszą używać
+    rdzeni fleksyjnych, nie słownikowej formy mianownika."""
+
+    def test_genitive_case_after_koszty_still_matches(self):
+        result = kategoryzuj("Koszty spedycji", use_web=False)
+        assert result["kategoria_klucz"] == "transport_logistyka"
+
+    def test_plural_pipe_still_matches(self):
+        # "rura" (mianownik) nie złapałoby "rury" (mnogiej/dopełniacza) —
+        # bardzo częstej formy w opisach pozycji ("Rury OC fi50-100").
+        result = kategoryzuj("Rury OC fi50-100", use_web=False)
+        assert result["kategoria_klucz"] == "armatura_tryskaczowa"
+
+    def test_plural_bolts_and_washers_still_match(self):
+        result = kategoryzuj("Podkładki M6 i M10, nakrętki DIN 934 M10", use_web=False)
+        assert result["kategoria_klucz"] == "mocowania_podwieszenia"
+
+
+class TestVendorCategoryHints:
+    """Faktury usługowe (podwykonawstwo, wynajem sprzętu, zaplecze
+    budowy...) zwykle nie mają żadnego słowa kluczowego produktu w opisie
+    pozycji — tożsamość znanego, powtarzającego się dostawcy jest tu
+    dużo pewniejszym sygnałem niż tekst."""
+
+    def test_subcontractor_installation_invoice_without_product_keywords(self):
+        # Celowo bez słów "montaż"/"instalacja" (te już same trafiają do
+        # słownika) — to test na sytuację, gdy NIC w opisie nie pasuje i
+        # jedynym sygnałem zostaje tożsamość dostawcy.
+        result = kategoryzuj(
+            "Realizacja umowy na obiekcie Ronald McDonald w Warszawie",
+            sprzedawca="Krzysztof Jurczyński – Wykonywanie Instalacji WOD-KAN i CO",
+            use_web=False,
+        )
+        assert result["kategoria_klucz"] == "uslugi_podwykonawcow"
+        assert result["zrodlo_dopasowania"] == "dostawca"
+
+    def test_container_rental_invoice_without_product_keywords(self):
+        result = kategoryzuj(
+            "Najem kontenera ELA BWAM 20-stopowego z klimatyzacją (lipiec)",
+            sprzedawca="ELA Container Polska Sp. z o.o.",
+            use_web=False,
+        )
+        assert result["kategoria_klucz"] == "zaplecze_budowy"
+
+    def test_strong_keyword_match_still_wins_over_vendor_hint(self):
+        # Nawet u dostawcy z podpowiedzią kategorii, jednoznaczne słowo
+        # kluczowe produktu (>=70% pewności) ma pierwszeństwo — podpowiedź
+        # dostawcy to tylko siatka bezpieczeństwa dla przypadków bez
+        # żadnego trafienia w słowniku.
+        result = kategoryzuj(
+            "Pętle rurowe RSL N 33,7-88,9 M10 FM",
+            sprzedawca="Sikla Polska Sp. z o.o.",
+            use_web=False,
+        )
+        assert result["kategoria_klucz"] == "mocowania_podwieszenia"
+        assert result["zrodlo_dopasowania"] == "słownik"
+
+    def test_unknown_vendor_has_no_hint(self):
+        assert _cat_by_vendor("Zupełnie Nieznana Firma Sp. z o.o.") == ("", "")
+
+
 class TestTransportCategoryDoesNotOvermatch:
     """Bug: słowo kluczowe "dostaw" (substring) łapało też "dostawca"/
     "dostawcy" (SPRZEDAWCA faktury — zupełnie inne pojęcie niż koszt
@@ -269,20 +335,20 @@ class TestTransportCategoryDoesNotOvermatch:
 
     def test_delivery_charge_is_still_transport(self):
         result = kategoryzuj("Koszt dostawy towaru", use_web=False)
-        assert result["kategoria_klucz"] == "transport"
+        assert result["kategoria_klucz"] == "transport_logistyka"
 
     def test_supplier_mention_is_not_transport(self):
         result = kategoryzuj("Zestaw wg specyfikacji dostawcy XYZ", use_web=False)
-        assert result["kategoria_klucz"] != "transport"
+        assert result["kategoria_klucz"] != "transport_logistyka"
 
     def test_bare_carriage_is_transport(self):
         result = kategoryzuj("Carriage", use_web=False)
-        assert result["kategoria_klucz"] == "transport"
+        assert result["kategoria_klucz"] == "transport_logistyka"
 
     def test_carriage_bolt_is_not_transport(self):
         # "carriage bolt" to śruba (złącze mechaniczne), nie koszt przesyłki.
         result = kategoryzuj("Carriage bolt M8x50", use_web=False)
-        assert result["kategoria_klucz"] != "transport"
+        assert result["kategoria_klucz"] != "transport_logistyka"
 
 
 class TestVendorExtractionRejectsBuyerBleed:
