@@ -19,6 +19,7 @@ from app.categorizer import (
     find_value,
     kategoryzuj,
     parse_text_mercor,
+    parse_text_tasta,
 )
 from app.db import extract_year
 
@@ -146,6 +147,39 @@ class TestParseTextMercor:
         assert it["cena_netto"] == 1560.30
         assert it["wartosc_netto"] == 1560.30
         assert it["wartosc_brutto"] == 1919.17
+
+
+class TestParseTextTasta:
+    def test_multiline_item_with_indeks_on_next_line(self):
+        # Bug znaleziony na żywych danych: Tasta Armatura ma kolejność
+        # JM-przed-Ilością (odwrotnie niż większość innych formatów) i
+        # pdfplumber nie widzi tu żadnej tabeli — parse_all_tables() i
+        # parse_text_universal() (kolejność Ilość-przed-JM) dawały zero
+        # pozycji mimo w pełni czytelnego tekstu. 15/15 faktur w realnym
+        # projekcie po tej poprawce zgadza się co do grosza z ręcznym
+        # rejestrem księgowym.
+        text = (
+            "1 SUPER GLIDEX - pasta poslizgowa z silikonem 1000g szt 5,00 71,80 359,00 23% 82,57 441,57\n"
+            "YPL^^1000g\n"
+            "2 UNIGARN pakuly lniane - 100g szt 25,00 5,35 133,75 23% 30,76 164,51\n"
+            "YPL^^100g\n"
+            "Razem 492,75 113,33 606,08\n"
+        )
+        items = parse_text_tasta(text)
+        assert len(items) == 2
+        assert items[0]["opis"] == "SUPER GLIDEX - pasta poslizgowa z silikonem 1000g"
+        assert items[0]["indeks"] == "YPL^^1000g"
+        assert items[0]["jm"] == "szt"
+        assert items[0]["ilosc"] == 5.0
+        assert items[0]["cena_netto"] == 71.80
+        assert items[0]["wartosc_brutto"] == 441.57
+        assert items[1]["indeks"] == "YPL^^100g"
+
+    def test_summary_line_is_not_mistaken_for_an_item(self):
+        text = "1 Coś szt 1,00 10,00 10,00 23% 2,30 12,30\nKOD1\nRazem 10,00 2,30 12,30\n"
+        items = parse_text_tasta(text)
+        assert len(items) == 1
+        assert items[0]["indeks"] == "KOD1"
 
 
 class TestExtractYear:

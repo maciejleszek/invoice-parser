@@ -747,6 +747,43 @@ def parse_text_tyco(text: str) -> list[dict]:
     return items
 
 
+def parse_text_tasta(text: str) -> list[dict]:
+    """
+    Tasta Armatura: LP OPIS JM ILOŚĆ CENA_NETTO WARTOŚĆ_NETTO VAT% KWOTA_VAT WARTOŚĆ_BRUTTO
+                    KOD_PRODUKTU (kolejna linia)
+    Kolejność JM-przed-Ilością (a nie odwrotnie, jak w większości innych
+    formatów) i pdfplumber nie widzi tu żadnej tabeli (czysto pozycjonowany
+    tekst) — stąd zero pozycji z parse_all_tables()/parse_text_universal()
+    mimo w pełni czytelnego, regularnego układu.
+    """
+    lines = text.split('\n')
+    items = []
+    pat = re.compile(
+        r'^(\d{1,3})\s+(.+?)\s+(\w+\.?)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+(\d+)%\s+([\d,]+)\s+([\d,]+)\s*$'
+    )
+    for i, line in enumerate(lines):
+        m = pat.match(line.strip())
+        if not m: continue
+
+        indeks = ""
+        if i + 1 < len(lines):
+            nxt = lines[i + 1].strip()
+            if nxt and len(nxt) < 40 and not re.match(r'^\d{1,3}\s|Razem|W tym', nxt, re.I):
+                indeks = nxt
+
+        items.append({
+            "lp": int(m.group(1)), "opis": _clean_opis(m.group(2)),
+            "indeks": indeks, "pkwiu": "",
+            "ilosc": clean_amount(m.group(4)), "jm": m.group(3),
+            "cena_netto":    clean_amount(m.group(5)),
+            "wartosc_netto": clean_amount(m.group(6)),
+            "stawka_vat":    m.group(7) + "%",
+            "kwota_vat":     clean_amount(m.group(8)),
+            "wartosc_brutto":clean_amount(m.group(9)),
+        })
+    return items
+
+
 def parse_text_universal(text: str) -> list[dict]:
     """
     Fallback dla nieznanych dostawców bez tabel.
@@ -795,6 +832,7 @@ def detect_vendor(text: str) -> str:
     if re.search(r'Fire Eater|fire-eater\.com', text, re.I):    return "fire_eater"
     if re.search(r'Tyco Building Services', text, re.I):        return "tyco"
     if re.search(r'[Rr]apidrop',           text):               return "rapidrop"
+    if re.search(r'TASTA ARMATURA',         text, re.I):         return "tasta"
     # Krajowy System e-Faktur (KSeF) — obowiązkowy krajowy format e-faktur
     # w Polsce, używany przez dowolnego wystawcę (nie tylko powyższych).
     # Ma stały układ nagłówka, więc warto go rozpoznać osobno zamiast
@@ -1002,6 +1040,7 @@ def extract_header(text: str, tables: list, vendor: str,
             "euroterm": "EUROTERM TGS sp. z o.o.", "fire_eater": "Fire Eater A/S",
             "tyco": "Tyco Building Services Products GmbH",
             "rapidrop": "Rapidrop Europe Limited",
+            "tasta": "TASTA ARMATURA SP. Z O.O.",
         }.get(vendor)
 
     if not h.get("sprzedawca") and page0_words:
@@ -1137,6 +1176,7 @@ def parse_invoice(pdf_path: str) -> tuple[dict, list[dict]] | tuple[None, None]:
             "euroterm":   parse_text_euroterm,
             "fire_eater": parse_text_fire_eater,
             "tyco":       parse_text_tyco,
+            "tasta":      parse_text_tasta,
         }
         if vendor in text_parsers:
             items = text_parsers[vendor](full_text)
