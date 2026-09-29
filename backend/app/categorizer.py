@@ -341,6 +341,19 @@ def find_value(text, *patterns):
     return None
 
 
+def _is_delivery_note(full_text: str) -> bool:
+    """"WZ" (dokument wydania zewnętrznego z magazynu) to załącznik
+    potwierdzający fizyczne wydanie towaru, nie osobna faktura — nie ma
+    własnej wartości kosztowej do policzenia (kwoty na nim bywają cenami
+    rozliczeniowymi magazynu, nie tym, co faktycznie zapłacił nabywca).
+    Traktowanie go jak faktury dawało pusty/wątpliwy wpis w projekcie obok
+    właściwej faktury, do której się odnosi (rozpoznawalny po numerze —
+    "Nr faktury:" — w treści samego WZ). Tytuł "DOKUMENT WYDANIA" zawsze
+    stoi na samej górze takiego dokumentu, więc szukamy tylko w pierwszych
+    ~300 znakach — prawdziwa faktura nie miałaby tej frazy w nagłówku."""
+    return bool(re.search(r'DOKUMENT\s+WYDANIA', full_text[:300], re.I))
+
+
 def _looks_like_real_invoice_number(value: str | None) -> bool:
     """Prawdziwy numer faktury jest krótki i zawsze ma choć jedną cyfrę.
     Bez tej walidacji zbyt zachłanny regex fallback (dla nieznanych
@@ -893,7 +906,10 @@ def _from_header_table(tables: list) -> dict:
 
 
 def _extract_vendor_name(text: str) -> str:
-    m = re.search(r'(?:Sprzedawca|Wystawca|Sprzedaj[aą]cy)\s*[:\n]\s*(.+?)(?:\n|NIP|ul\.|Al\.)', text, re.I)
+    # "(?:/\w+)?" toleruje etykiety typu "Sprzedawca/podatnik" (spotykane
+    # np. u PHPU Oparowie) — bez tego "/podatnik" zaraz po słowie kluczowym
+    # łamało wymóg dwukropka/nowej linii tuż po nim.
+    m = re.search(r'(?:Sprzedawca|Wystawca|Sprzedaj[aą]cy)(?:/\w+)?\s*[:\n]\s*(.+?)(?:\n|NIP|ul\.|Al\.)', text, re.I)
     if m and _looks_like_real_vendor_name(m.group(1)):
         return m.group(1).strip()
     # Nazwa sprzedawcy zwykle stoi w nagłówku/stopce dokumentu (pierwsze
@@ -977,13 +993,35 @@ def extract_header(text: str, tables: list, vendor: str,
         h["sprzedawca"] = _extract_party_name(left_col)
 
     if not h.get("sprzedawca"):
+        # Znani dostawcy mają stałą, zaufaną nazwę — sprawdzane PRZED
+        # jakąkolwiek heurystyką (w tym rozdzielaniem kolumn niżej), żeby
+        # nigdy jej nie przesłonić krótkim, ale błędnym dopasowaniem.
         h["sprzedawca"] = {
             "tim": "TIM S.A.", "sonepar": "Sonepar Polska Sp. z o.o.",
             "siemens": "Siemens Sp. z o.o.", "mercor": "MERCOR Light&Vent sp. z o.o.",
             "euroterm": "EUROTERM TGS sp. z o.o.", "fire_eater": "Fire Eater A/S",
             "tyco": "Tyco Building Services Products GmbH",
             "rapidrop": "Rapidrop Europe Limited",
-        }.get(vendor) or _extract_vendor_name(text)
+        }.get(vendor)
+
+    if not h.get("sprzedawca") and page0_words:
+        # J.w. (rozdzielenie kolumn), ale dla DOWOLNEGO nierozpoznanego
+        # wystawcy — mnóstwo "zwykłych" faktur (np. Tasta Armatura, PHPU
+        # Oparowie) ma ten sam dwukolumnowy układ Sprzedawca/Nabywca bez
+        # żadnego specjalnego oznaczenia formatu. Bez rozdzielenia kolumn
+        # zwykły extract_text() zlewa "Sprzedawca NABYWCA" w jedną linię
+        # nagłówka, więc generyczny fallback niżej albo w ogóle nic nie
+        # znajduje, albo (gorzej) łapie nazwę nabywcy zamiast sprzedawcy.
+        # Próba jest tania i bezpieczna dla faktur jednokolumnowych —
+        # wtedy po prostu nic tu nie znajdzie i kod schodzi do fallbacku
+        # na pełnym tekście niżej.
+        left_col, _right_col = _column_texts(page0_words, page0_width or 595)
+        candidate = _extract_vendor_name(left_col)
+        if candidate != "Nieznany":
+            h["sprzedawca"] = candidate
+
+    if not h.get("sprzedawca"):
+        h["sprzedawca"] = _extract_vendor_name(text)
 
     # Kwoty razem
     if not h.get("razem_brutto"):
@@ -1053,7 +1091,7 @@ def extract_header(text: str, tables: list, vendor: str,
 #  GŁÓWNA FUNKCJA PARSOWANIA
 # ══════════════════════════════════════════════════════════════
 
-def parse_invoice(pdf_path: str) -> tuple[dict, list[dict]]:
+def parse_invoice(pdf_path: str) -> tuple[dict, list[dict]] | tuple[None, None]:
     full_text = ""
     all_tables: list = []
     page0_words: list = []
@@ -1070,6 +1108,9 @@ def parse_invoice(pdf_path: str) -> tuple[dict, list[dict]]:
                     page0_words = page.extract_words()
                     page0_width = page.width
                 except Exception: pass
+
+    if _is_delivery_note(full_text):
+        return None, None
 
     vendor = detect_vendor(full_text)
     header = extract_header(full_text, all_tables, vendor, page0_words, page0_width)
@@ -1320,6 +1361,9 @@ def categorize_files(pdf_files: list[str], use_web: bool = True,
             header, items = parse_invoice(path)
         except Exception as e:
             log(f"  ✗ błąd: {e}"); continue
+        if header is None:
+            log("  ⊘ pominięto (dokument WZ/wydania magazynowego, nie faktura)")
+            continue
 
         all_headers.append(header)
         log(f"  ✓ {header.get('numer_faktury')} | "

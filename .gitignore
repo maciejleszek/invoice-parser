@@ -11,9 +11,11 @@ frontend/.env
 
 # Generated output / sample data (może zawierać rzeczywiste dane firmowe)
 *.xlsx
+*.zip
 input/*.pdf
 input/*.PDF
 Nowy folder/
+Projekty 601 626/
 
 # Vercel CLI (lokalne powiązanie projektu, per-maszyna)
 .vercel/

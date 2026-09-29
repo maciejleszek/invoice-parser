@@ -7,6 +7,7 @@ import pytest
 
 from app.categorizer import (
     _extract_vendor_name,
+    _is_delivery_note,
     _looks_like_real_invoice_number,
     _looks_like_real_vendor_name,
     _map_columns,
@@ -272,3 +273,75 @@ class TestVendorExtractionRejectsBuyerBleed:
         # to, że walidacja nie jest przesadnie szeroka wobec prawdziwych
         # nazw firm bez "dekk" w środku.
         assert _looks_like_real_vendor_name("TASTA ARMATURA Sp. z o.o.") is True
+
+
+class TestIsDeliveryNote:
+    def test_recognizes_wz_document_by_its_own_heading(self):
+        text = (
+            "METALOWIEC | www.opara.pl\n"
+            "Data:30.07.2025\n"
+            "DOKUMENT WYDANIA nr WZ 013971/25\n"
+            "Odbiorca: DEKK FIRE SOLUTIONS SP.Z O.O.\n"
+        )
+        assert _is_delivery_note(text) is True
+
+    def test_real_invoice_mentioning_wz_numbers_is_not_a_delivery_note(self):
+        # Bug: prawdziwa faktura CZĘSTO wymienia numery WZ, do których się
+        # odnosi ("Wydano wg dokumentów WZ 011907/25...") — to nie może
+        # samo w sobie sprawiać, że faktura zostanie potraktowana jak
+        # załącznik i pominięta. Liczy się tylko WŁASNY nagłówek dokumentu.
+        text = (
+            "Faktura nr F/007418/25\n"
+            "Sprzedawca/podatnik Nabywca/płatnik\n"
+            "PHPU Bożena i Tadeusz Oparowie s.c. DEKK FIRE SOLUTIONS SP.Z O.O.\n"
+            "Wydano wg dokumentów\n"
+            "WZ 011907/25 z dnia 03.07.2025, Magazyn Główny;\n"
+        )
+        assert _is_delivery_note(text) is False
+
+
+def _words_from_columns(left_lines, right_lines, col_x=310):
+    """Buduje listę słów w formacie pdfplumber `page.extract_words()`
+    (dict z 'text'/'x0'/'top') z dwóch kolumn tekstu — do testowania
+    rozdzielania układu dwukolumnowego bez potrzeby prawdziwego PDF-u."""
+    words = []
+    for row, line in enumerate(left_lines):
+        for col, word in enumerate(line.split()):
+            words.append({"text": word, "x0": 10 + col * 15, "top": row * 12})
+    for row, line in enumerate(right_lines):
+        for col, word in enumerate(line.split()):
+            words.append({"text": word, "x0": col_x + col * 15, "top": row * 12})
+    return words
+
+
+class TestExtractHeaderTwoColumnVendorSplit:
+    def test_generic_vendor_two_column_layout_recovers_correct_seller(self):
+        # Bug znaleziony na żywych danych: ta appka jest wewnętrznym
+        # narzędziem DEKK Fire Solutions, więc "Sprzedawca | Nabywca" w
+        # układzie dwukolumnowym (typowy nie tylko dla KSeF) dawał po
+        # zwykłym extract_text() jedną zlaną linię "Sprzedawca NABYWCA" —
+        # generyczny fallback bez rozdzielenia kolumn albo nic nie
+        # znajdował, albo łapał nazwę nabywcy (DEKK) zamiast sprzedawcy.
+        left = ["Sprzedawca", "TASTA ARMATURA SP. Z O.O.", "ul. Testowa 1"]
+        right = ["NABYWCA", "DEKK FIRE SOLUTIONS Sp. z o.o.", "ul. Inna 2"]
+        words = _words_from_columns(left, right)
+        text = (
+            "Sprzedawca NABYWCA\n"
+            "TASTA ARMATURA SP. Z O.O. DEKK FIRE SOLUTIONS Sp. z o.o.\n"
+            "ul. Testowa 1 ul. Inna 2\n"
+        )
+        h = extract_header(text, tables=[], vendor="generic",
+                            page0_words=words, page0_width=620)
+        assert h["sprzedawca"] == "TASTA ARMATURA SP. Z O.O."
+
+    def test_known_vendor_hardcoded_name_wins_over_column_split_guess(self):
+        # Regresja: rozdzielanie kolumn nie może przesłonić zaufanej,
+        # zahardkodowanej nazwy znanego dostawcy krótszym, ale błędnym
+        # dopasowaniem z heurystyki.
+        left = ["Sprzedawca", "EUROTERM"]
+        right = ["Nabywca", "Ktoś Inny Sp. z o.o."]
+        words = _words_from_columns(left, right)
+        text = "Sprzedawca Nabywca\nEUROTERM Ktoś Inny Sp. z o.o.\n"
+        h = extract_header(text, tables=[], vendor="euroterm",
+                            page0_words=words, page0_width=620)
+        assert h["sprzedawca"] == "EUROTERM TGS sp. z o.o."
