@@ -229,6 +229,17 @@ Dane projektów żyją w nazwanym wolumenie Dockera (`backend_data`) i przetrwaj
 `docker compose down` / restart kontenera — znikają dopiero po
 `docker compose down -v`.
 
+## Import faktur czytanych przez Claude Code (alternatywa dla GUI)
+
+Obok normalnego wgrywania przez GUI (regexowy parser w `categorizer.py`)
+istnieje druga, półautomatyczna ścieżka: Claude Code czyta PDF bezpośrednio
+(wizualnie), sam buduje dane faktury i zapisuje je do tej samej bazy przez
+`backend/app/ai_import.py`. Przydatna dla faktur, na których regexowy
+parser ma znane dziury (zepsute kodowanie fontów, skany bez warstwy
+tekstowej, nietypowe tabele) — patrz `docs/AI_KATEGORYZACJA.md` po pełny
+opis, reguły brzegowe (dokumenty WZ, korekty walutowe, zbiorcze rozliczenia
+pracownicze) i instrukcję użycia.
+
 ## Deployment na Vercel
 
 Backend i frontend jako jeden projekt Vercel (`vercel.json` w korzeniu:
